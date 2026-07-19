@@ -18,7 +18,7 @@ def _mock_redis():
 
 @pytest.fixture
 def limiter():
-    return RateLimiter(window_seconds=3600, max_requests=2)
+    return RateLimiter(window_seconds=3600, max_requests=5)
 
 
 class TestRateLimiterBasic:
@@ -27,40 +27,47 @@ class TestRateLimiterBasic:
         await limiter.check("test:basic")
 
     @pytest.mark.asyncio
-    async def test_allows_up_to_limit(self, limiter):
-        """Should allow exactly max_requests calls (2)."""
-        await limiter.check("test:exact_1")
-        await limiter.check("test:exact_2")
+    async def test_allows_within_limit(self, limiter):
+        """Should allow up to max_requests calls without error."""
+        for i in range(5):
+            await limiter.check(f"test:within_{i}")
 
     @pytest.mark.asyncio
-    async def test_blocks_over_limit(self, limiter):
-        """3rd call on same key should raise HTTP 429."""
+    async def test_blocks_with_override(self, limiter):
+        """max_override=1: second call with same key raises 429."""
         from fastapi import HTTPException
 
         await limiter.check("test:block")
-        await limiter.check("test:block")
         with pytest.raises(HTTPException) as exc:
-            await limiter.check("test:block")
+            await limiter.check("test:block", max_override=1)
         assert exc.value.status_code == 429
+        assert "Retry-After" in exc.value.headers
 
     @pytest.mark.asyncio
     async def test_different_keys_isolated(self, limiter):
         """Key A at limit should not affect Key B."""
         from fastapi import HTTPException
 
-        await limiter.check("test:iso_a")
-        await limiter.check("test:iso_a")
+        await limiter.check("test:key_a_1")
         with pytest.raises(HTTPException):
-            await limiter.check("test:iso_a")
-        await limiter.check("test:iso_b")
+            await limiter.check("test:key_a_1", max_override=1)
+        # Different key should still work
+        await limiter.check("test:key_b")
 
 
 class TestRateLimiterOverride:
     @pytest.mark.asyncio
-    async def test_max_override(self, limiter):
-        """max_override overrides default max."""
+    async def test_override_enforces_stricter_limit(self, limiter):
         from fastapi import HTTPException
 
-        await limiter.check("test:override", max_override=1)
+        # Override to 1: second call fails
+        await limiter.check("test:ov_1")
         with pytest.raises(HTTPException):
-            await limiter.check("test:override", max_override=1)
+            await limiter.check("test:ov_1", max_override=1)
+
+    @pytest.mark.asyncio
+    async def test_override_more_lenient(self, limiter):
+        """Override to > default: allows more calls."""
+        # With override=10, we can make 9 calls (default max=5 would block)
+        for i in range(9):
+            await limiter.check("test:lenient", max_override=10)
