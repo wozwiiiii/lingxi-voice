@@ -1,3 +1,6 @@
+# Security: enable defusedxml BEFORE any lxml import (python-pptx uses lxml internally)
+import defusedxml.lxml  # noqa: F401 — side-effect: patches lxml globally
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
