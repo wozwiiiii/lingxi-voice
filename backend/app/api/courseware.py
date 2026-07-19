@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.courseware import CoursewareProject
+from app.models.user import User
 from app.schemas.courseware import (
     BulkSettingsUpdate,
     CoursewareListResponse,
@@ -25,12 +26,22 @@ from app.services.courseware_service import (
     create_from_upload,
     get_project,
     get_slides,
-    seed_courseware_presets,
     update_slide,
 )
 from app.utils.storage import storage
 
 router = APIRouter(prefix="/api/courseware", tags=["courseware"])
+
+
+def _check_ownership(project: CoursewareProject | None, user: User | None) -> None:
+    """Raise 404 if project doesn't exist or user doesn't own it.
+    Public presets (user_id IS NULL) are accessible to everyone.
+    Private projects require the owner or return 404 (prevents ID enumeration).
+    """
+    if not project:
+        raise HTTPException(status_code=404)
+    if project.user_id is not None and (user is None or project.user_id != user.id):
+        raise HTTPException(status_code=404)
 
 
 @router.post("/upload", response_model=CoursewareProjectResponse, status_code=201)
@@ -88,15 +99,26 @@ async def list_courseware(
 
 
 @router.get("/{project_id}", response_model=CoursewareProjectResponse)
-async def get_courseware_project(project_id: str, db: AsyncSession = Depends(get_db)):
+async def get_courseware_project(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_or_visitor=Depends(get_visitor_or_user),
+):
     project = await get_project(db, project_id)
-    if not project:
-        raise HTTPException(status_code=404)
+    user, _ = user_or_visitor
+    _check_ownership(project, user)
     return project
 
 
 @router.get("/{project_id}/slides", response_model=list[CoursewareSlideResponse])
-async def get_courseware_slides(project_id: str, db: AsyncSession = Depends(get_db)):
+async def get_courseware_slides(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_or_visitor=Depends(get_visitor_or_user),
+):
+    project = await get_project(db, project_id)
+    user, _ = user_or_visitor
+    _check_ownership(project, user)
     return await get_slides(db, project_id)
 
 
@@ -105,6 +127,8 @@ async def patch_slide(
     project_id: str, slide_index: int, data: SlideUpdate,
     db: AsyncSession = Depends(get_db), user=Depends(get_current_user),
 ):
+    project = await get_project(db, project_id)
+    _check_ownership(project, user)
     slide = await update_slide(
         db, project_id, slide_index, data.model_dump(exclude_none=True),
     )
@@ -118,6 +142,8 @@ async def patch_bulk_settings(
     project_id: str, data: BulkSettingsUpdate,
     db: AsyncSession = Depends(get_db), user=Depends(get_current_user),
 ):
+    project = await get_project(db, project_id)
+    _check_ownership(project, user)
     await apply_bulk_settings(db, project_id, data.model_dump(exclude_none=True))
     return {"status": "ok"}
 
@@ -129,8 +155,7 @@ async def synthesize_courseware(
     user=Depends(get_current_user),
 ):
     project = await get_project(db, project_id)
-    if not project:
-        raise HTTPException(status_code=404)
+    _check_ownership(project, user)
     if project.status not in ("ready", "failed"):
         raise HTTPException(
             status_code=409,
@@ -152,7 +177,15 @@ async def synthesize_courseware(
 
 
 @router.get("/{project_id}/progress")
-async def get_progress(project_id: str):
+async def get_progress(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_or_visitor=Depends(get_visitor_or_user),
+):
+    project = await get_project(db, project_id)
+    user, _ = user_or_visitor
+    _check_ownership(project, user)
+
     from app.utils.redis_client import get_redis
     import asyncio
     import json
@@ -178,15 +211,16 @@ async def download_courseware(
     user=Depends(get_current_user),
 ):
     project = await get_project(db, project_id)
-    if not project:
-        raise HTTPException(status_code=404)
+    _check_ownership(project, user)
     if project.status != "completed":
         raise HTTPException(status_code=409, detail="课件合成尚未完成")
 
     slides = await get_slides(db, project_id)
     zip_bytes = await build_zip(project, slides)
 
-    safe_title = project.title.replace("/", "_").replace("\\", "_")
+    # Sanitize filename: strip all non-printable chars
+    import re
+    safe_title = re.sub(r'[^\w\s\-.]', '_', project.title)
     return StreamingResponse(
         io.BytesIO(zip_bytes),
         media_type="application/zip",
@@ -201,8 +235,7 @@ async def delete_courseware(
     user=Depends(get_current_user),
 ):
     project = await get_project(db, project_id)
-    if not project or project.user_id != user.id:
-        raise HTTPException(status_code=404)
+    _check_ownership(project, user)
 
     slides = await get_slides(db, project_id)
     for slide in slides:

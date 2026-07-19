@@ -47,7 +47,7 @@ async def validate_audio_upload(file: UploadFile) -> ValidatedAudio:
     if not recognized:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"无法识别的音频格式(文件头: {magic.hex()})",
+            detail="不支持的音频格式，请上传 WAV 或 MP3 文件",
         )
 
     # 3. Sanitize filename → store

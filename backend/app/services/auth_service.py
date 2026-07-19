@@ -18,9 +18,10 @@ async def register_user(db: AsyncSession, data: RegisterRequest) -> User:
         )
     )
     if existing.scalar_one_or_none():
+        # Generic message — prevents user enumeration
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email or username already registered",
+            detail="Registration failed. If you already have an account, please log in.",
         )
     user = User(
         email=data.email,
@@ -62,8 +63,17 @@ async def refresh_access_token(refresh_token_str: str) -> TokenResponse:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong token type"
         )
+
+    # Rotate refresh token: blacklist old one, issue new pair
+    old_jti = payload.get("jti", "")
+    if old_jti:
+        redis = await get_redis()
+        remaining_ttl = max(0, int(payload.get("exp", 0) - __import__("time").time()))
+        await redis.setex(f"jwt:blacklist:{old_jti}", remaining_ttl, "1")
+
     access_token, _, _ = create_access_token(payload["sub"])
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token_str)
+    new_refresh_token, _, _ = create_refresh_token(payload["sub"])
+    return TokenResponse(access_token=access_token, refresh_token=new_refresh_token)
 
 
 async def logout_user(access_jti: str) -> None:

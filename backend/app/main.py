@@ -11,7 +11,29 @@ from app.api.tts import router as tts_router
 from app.api.voices import router as voices_router
 from app.config import settings
 
-app = FastAPI(title="LingXi Voice API", version="0.1.0")
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup: validate secrets. Shutdown: no-op."""
+    weak = (
+        "change-me", "change-me-to-random-64-chars", "",
+        "lingxi-dev-secret-do-not-use-in-production",
+    )
+    if settings.JWT_SECRET_KEY in weak:
+        raise RuntimeError(
+            "JWT_SECRET_KEY must be set to a strong random value. "
+            "Generate: openssl rand -base64 64"
+        )
+    if len(settings.JWT_SECRET_KEY) < 32:
+        raise RuntimeError(
+            "JWT_SECRET_KEY must be at least 32 characters for HMAC-SHA256 security"
+        )
+    yield
+
+
+app = FastAPI(title="LingXi Voice API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
