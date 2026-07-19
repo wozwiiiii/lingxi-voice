@@ -1,4 +1,4 @@
-"""Voice clone service — Celery task for async clone processing."""
+"""Voice clone service — async clone processing with offloaded I/O."""
 
 import asyncio
 import uuid
@@ -50,8 +50,8 @@ async def clone_voice_async(
         db.add(consent)
         await db.flush()
 
-        # 4. Clone
-        audio_data = open(abs_path, "rb").read()
+        # 4. Clone (audio read offloaded to thread to avoid blocking event loop)
+        audio_data = await asyncio.to_thread(lambda: open(abs_path, "rb").read())
         provider = await get_active_provider_async()
         voice_meta = await provider.clone_voice(audio_data, name)
 

@@ -48,7 +48,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
     # Replace global redis client with fakeredis (not just FastAPI DI override,
     # because internal code calls get_redis() directly, not via Depends)
-    fake_redis = fakeredis.aioredis.FakeRedis()
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     original_redis = redis_module.redis_client
     redis_module.redis_client = fake_redis
 

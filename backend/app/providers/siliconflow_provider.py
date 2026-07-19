@@ -53,7 +53,7 @@ class SiliconFlowProvider(TTSProvider):
             voice=voice_id,
             input=text,
             speed=params.speed,
-            response_format=params.emotion or "mp3",
+            response_format="mp3",  # Audio format, NOT emotion
             extra_body=(
                 {"emotion": params.emotion, "language": params.language}
                 if params.emotion

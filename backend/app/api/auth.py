@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -38,10 +39,18 @@ async def refresh(data: RefreshRequest):
 
 
 @router.post("/logout", status_code=204)
-async def logout(user=Depends(get_current_user)):
-    # The client sends the access token; we extract jti from it
-    # In practice, the client includes the token in the request
-    return {"message": "logged out"}
+async def logout(request: Request, user=Depends(get_current_user)):
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:]
+        try:
+            payload = decode_token(token)
+            jti = payload.get("jti", "")
+            if jti:
+                await logout_user(jti)
+        except Exception:
+            pass  # Token already invalid; logout still effective
+    return Response(status_code=204)
 
 
 @router.get("/me", response_model=UserResponse)

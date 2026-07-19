@@ -20,7 +20,9 @@ MATH_CHEM_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"√"), "square_root"),
     (re.compile(r"∞"), "infinity"),
     (re.compile(r"≈"), "approximately_equal"),
-    (re.compile(r"[A-Z][a-z]?\d*[A-Z][a-z]?\d*[A-Z][a-z]?\d*"), "chemical_formula"),
+    # Chemical formula: uppercase-starting element symbols with optional
+    # Unicode subscript digits (₀-₉) or ASCII digits
+    (re.compile(r"[A-Z][a-z]?[₀-₉\d]*(?:[A-Z][a-z]?[₀-₉\d]*)+"), "chemical_formula"),
 ]
 
 

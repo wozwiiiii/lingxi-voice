@@ -11,8 +11,8 @@ from app.models.base import Base, TimestampMixin, UUIDMixin
 class SynthesisTask(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "synthesis_tasks"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
     )
     voice_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("voices.id"), nullable=False

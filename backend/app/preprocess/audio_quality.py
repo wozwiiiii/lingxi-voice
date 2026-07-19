@@ -62,11 +62,11 @@ def _estimate_snr(signal: np.ndarray) -> float:
     n_frames = len(signal) // frame_len
     if n_frames < 2:
         return 20.0
-    frame_energy = np.array([
-        np.mean(np.abs(signal[i * frame_len : (i + 1) * frame_len]))
+    frame_rms = np.array([
+        np.sqrt(np.mean(signal[i * frame_len : (i + 1) * frame_len] ** 2))
         for i in range(n_frames)
     ])
-    noise_floor = np.percentile(frame_energy, 10)
+    noise_floor = np.percentile(frame_rms, 10)
     if noise_floor < 1e-10:
         return 30.0
     return 20 * math.log10(rms / noise_floor)
