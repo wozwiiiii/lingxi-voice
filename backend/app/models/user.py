@@ -1,8 +1,8 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, String
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import JSON
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
@@ -19,7 +19,7 @@ class User(Base, UUIDMixin, TimestampMixin):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    quota_override: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    quota_override: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     voices = relationship("Voice", back_populates="owner")
     consents = relationship("Consent", back_populates="user")

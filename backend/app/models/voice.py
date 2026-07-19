@@ -1,8 +1,9 @@
 import uuid
 
 from sqlalchemy import Boolean, ForeignKey, String
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import JSON
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
@@ -18,7 +19,7 @@ class Voice(Base, UUIDMixin, TimestampMixin):
     type: Mapped[str] = mapped_column(String(20), nullable=False)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
-    provider_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    provider_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
     reference_audio_path: Mapped[str | None] = mapped_column(
         String(500), nullable=True
     )

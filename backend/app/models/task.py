@@ -1,8 +1,9 @@
 import uuid
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import JSON
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
@@ -19,7 +20,7 @@ class SynthesisTask(Base, UUIDMixin, TimestampMixin):
     type: Mapped[str] = mapped_column(String(20), nullable=False)
     input_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     llm_processed_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     output_audio_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     output_format: Mapped[str] = mapped_column(String(10), default="wav")
