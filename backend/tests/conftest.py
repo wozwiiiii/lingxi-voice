@@ -63,3 +63,19 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         yield ac
     app.dependency_overrides.clear()
     redis_module.redis_client = original_redis
+
+
+@pytest_asyncio.fixture
+async def auth_headers(client: AsyncClient) -> dict:
+    """Register+login a test user and return Authorization header."""
+    await client.post("/api/auth/register", json={
+        "email": "cw_test@example.com",
+        "username": "cwtestuser",
+        "password": "password123",
+    })
+    resp = await client.post("/api/auth/login", json={
+        "email": "cw_test@example.com",
+        "password": "password123",
+    })
+    tokens = resp.json()
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
