@@ -8,6 +8,7 @@ celery_app = Celery(
     "lingxi_voice",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
+    include=["app.services.clone_service", "app.tasks.courseware_tasks"],
 )
 
 celery_app.conf.update(
