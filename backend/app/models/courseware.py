@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
@@ -30,7 +30,8 @@ class CoursewareProject(Base, UUIDMixin, TimestampMixin):
 
     slides = relationship("CoursewareSlide", back_populates="project",
                           cascade="all, delete-orphan")
-    voice = relationship("Voice")
+    voice = relationship("Voice")  # intentionally one-way: Voice is a shared resource
+    user = relationship("User")
 
 
 class CoursewareSlide(Base, UUIDMixin, TimestampMixin):
@@ -47,7 +48,7 @@ class CoursewareSlide(Base, UUIDMixin, TimestampMixin):
     voice_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("voices.id"), nullable=True
     )
-    speed: Mapped[float] = mapped_column(default=1.0)
+    speed: Mapped[float] = mapped_column(Float, default=1.0)
     emotion: Mapped[str | None] = mapped_column(String(20), nullable=True)
     style: Mapped[str | None] = mapped_column(String(50), nullable=True)
     instruction: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -59,5 +60,5 @@ class CoursewareSlide(Base, UUIDMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(String(20), default="pending")
 
     project = relationship("CoursewareProject", back_populates="slides")
-    voice = relationship("Voice")
+    voice = relationship("Voice")  # intentionally one-way: Voice is a shared resource
     synthesis_task = relationship("SynthesisTask")
