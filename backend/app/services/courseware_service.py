@@ -1,0 +1,181 @@
+"""Courseware CRUD + synthesis orchestration."""
+
+import io
+import json
+import logging
+import uuid
+import zipfile
+
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.courseware import CoursewareProject, CoursewareSlide
+from app.services.pptx_parser import parse_pptx
+from app.utils.storage import storage
+
+logger = logging.getLogger(__name__)
+
+
+async def create_from_upload(
+    db: AsyncSession,
+    user_id: str,
+    filepath: str,
+    original_filename: str,
+    description: str | None = None,
+) -> CoursewareProject:
+    result = parse_pptx(filepath, original_filename)
+
+    project = CoursewareProject(
+        user_id=uuid.UUID(user_id),
+        title=result.title,
+        description=description,
+        original_pptx_path=filepath,
+        slides_count=result.slides_count,
+        status="ready",
+    )
+    db.add(project)
+    await db.flush()
+
+    for slide_data in result.slides:
+        slide = CoursewareSlide(
+            project_id=project.id,
+            slide_index=slide_data.index,
+            original_text=slide_data.text,
+        )
+        db.add(slide)
+
+    await db.flush()
+    await db.refresh(project)
+    return project
+
+
+async def get_project(db: AsyncSession, project_id: str) -> CoursewareProject | None:
+    result = await db.execute(
+        select(CoursewareProject).where(CoursewareProject.id == uuid.UUID(project_id))
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_slides(db: AsyncSession, project_id: str) -> list[CoursewareSlide]:
+    result = await db.execute(
+        select(CoursewareSlide)
+        .where(CoursewareSlide.project_id == uuid.UUID(project_id))
+        .order_by(CoursewareSlide.slide_index)
+    )
+    return list(result.scalars().all())
+
+
+async def update_slide(
+    db: AsyncSession, project_id: str, slide_index: int, data: dict,
+) -> CoursewareSlide | None:
+    result = await db.execute(
+        select(CoursewareSlide).where(
+            CoursewareSlide.project_id == uuid.UUID(project_id),
+            CoursewareSlide.slide_index == slide_index,
+        )
+    )
+    slide = result.scalar_one_or_none()
+    if not slide:
+        return None
+    for key, value in data.items():
+        if value is not None and hasattr(slide, key):
+            setattr(slide, key, value)
+    await db.flush()
+    await db.refresh(slide)
+    return slide
+
+
+async def apply_bulk_settings(
+    db: AsyncSession, project_id: str, data: dict,
+) -> None:
+    """Apply settings to all slides that don't have individual overrides."""
+    filtered = {k: v for k, v in data.items() if v is not None}
+    if not filtered:
+        return
+
+    stmt = (
+        update(CoursewareSlide)
+        .where(
+            CoursewareSlide.project_id == uuid.UUID(project_id),
+            CoursewareSlide.voice_id.is_(None),
+        )
+        .values(**filtered)
+    )
+    await db.execute(stmt)
+
+    if data.get("voice_id"):
+        await db.execute(
+            update(CoursewareProject)
+            .where(CoursewareProject.id == uuid.UUID(project_id))
+            .values(voice_id=uuid.UUID(data["voice_id"]))
+        )
+    await db.flush()
+
+
+async def build_zip(
+    project: CoursewareProject, slides: list[CoursewareSlide],
+) -> bytes:
+    """Build ZIP in memory: manifest.json + per-slide MP3s + original PPTX."""
+    manifest = {
+        "courseware_id": str(project.id),
+        "title": project.title,
+        "slides_count": project.slides_count,
+        "created_at": project.created_at.isoformat() if project.created_at else "",
+        "slides": [],
+    }
+
+    zf_buffer = io.BytesIO()
+    with zipfile.ZipFile(zf_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for slide in slides:
+            if slide.audio_path and slide.status == "completed":
+                abs_path = await storage.get_path(slide.audio_path)
+                audio_data = open(abs_path, "rb").read()
+                audio_name = f"audio/slide_{slide.slide_index:02d}.mp3"
+                zf.writestr(audio_name, audio_data)
+                manifest["slides"].append({
+                    "index": slide.slide_index,
+                    "original_text": slide.original_text,
+                    "llm_processed_text": slide.llm_processed_text,
+                    "audio_file": audio_name,
+                    "audio_duration_ms": slide.audio_duration_ms,
+                })
+
+        zf.writestr(
+            "manifest.json",
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+        )
+
+        if project.original_pptx_path:
+            abs_path = await storage.get_path(project.original_pptx_path)
+            pptx_data = open(abs_path, "rb").read()
+            zf.writestr("original.pptx", pptx_data)
+
+    return zf_buffer.getvalue()
+
+
+async def seed_courseware_presets(db: AsyncSession) -> None:
+    """Seed 5 preset courseware projects. Idempotent."""
+    presets = [
+        {"title": "古诗词鉴赏", "description": "李白《静夜思》朗诵与赏析"},
+        {"title": "English Lesson", "description": "Basic English conversation practice"},
+        {"title": "物理实验课", "description": "牛顿第二定律实验讲解"},
+        {"title": "历史故事会", "description": "三国演义·草船借箭"},
+        {"title": "企业培训模板", "description": "新员工入职培训标准课件"},
+    ]
+    for preset in presets:
+        existing = await db.execute(
+            select(CoursewareProject).where(
+                CoursewareProject.title == preset["title"],
+                CoursewareProject.user_id.is_(None),
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+        project = CoursewareProject(
+            title=preset["title"],
+            description=preset["description"],
+            slides_count=0,
+            status="completed",
+        )
+        db.add(project)
+    await db.flush()

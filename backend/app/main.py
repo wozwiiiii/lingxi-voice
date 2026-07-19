@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.capabilities import router as capabilities_router
+from app.api.courseware import router as courseware_router
 from app.api.tts import router as tts_router
 from app.api.voices import router as voices_router
 from app.config import settings
@@ -50,6 +51,7 @@ app.include_router(auth_router)
 app.include_router(tts_router)
 app.include_router(voices_router)
 app.include_router(capabilities_router)
+app.include_router(courseware_router)
 
 
 @app.get("/api/health")
