@@ -87,12 +87,19 @@ async def _synthesize_slide(db, slide: CoursewareSlide):
     voice_id = slide.voice_id
     if not voice_id:
         result = await db.execute(
-            select(CoursewareProject).where(
-                CoursewareProject.id == slide.project_id
-            )
+            select(CoursewareProject).where(CoursewareProject.id == slide.project_id)
         )
         project = result.scalar_one_or_none()
         voice_id = project.voice_id if project else None
+    # Fallback: use first available preset voice
+    if not voice_id:
+        from app.models.voice import Voice
+        result = await db.execute(
+            select(Voice).where(Voice.is_public == True).limit(1)
+        )
+        fallback = result.scalar_one_or_none()
+        if fallback:
+            voice_id = fallback.id
     if not voice_id:
         raise ValueError(f"Slide {slide.slide_index}: no voice assigned")
 

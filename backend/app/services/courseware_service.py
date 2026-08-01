@@ -10,6 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.courseware import CoursewareProject, CoursewareSlide
+from app.models.voice import Voice
 from app.services.pptx_parser import parse_pptx
 from app.utils.storage import storage
 
@@ -25,6 +26,15 @@ async def create_from_upload(
 ) -> CoursewareProject:
     result = parse_pptx(filepath, original_filename)
 
+    # Auto-assign first available preset voice as default
+    default_voice_id = None
+    voice_result = await db.execute(
+        select(Voice).where(Voice.is_public == True).limit(1)
+    )
+    voice = voice_result.scalar_one_or_none()
+    if voice:
+        default_voice_id = voice.id
+
     project = CoursewareProject(
         user_id=uuid.UUID(user_id),
         title=result.title,
@@ -32,6 +42,7 @@ async def create_from_upload(
         original_pptx_path=filepath,
         slides_count=result.slides_count,
         status="ready",
+        voice_id=default_voice_id,
     )
     db.add(project)
     await db.flush()
