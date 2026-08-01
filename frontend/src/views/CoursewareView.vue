@@ -68,8 +68,9 @@ async function handleSynthesize() {
     synthesizing.value = true;
     progress.value = { current: 0, total: 0 };
     error.value = "";
-    // Connect SSE for real-time progress
-    progressSource = new EventSource(`/api/courseware/${projectId}/progress`);
+    // Connect SSE for real-time progress (token via query param — SSE can't set headers)
+    const at = localStorage.getItem("access_token") || "";
+    progressSource = new EventSource(`/api/courseware/${projectId}/progress?token=${at}`);
     progressSource.onmessage = (e) => {
       const data = JSON.parse(e.data);
       progress.value = data;

@@ -180,11 +180,20 @@ async def synthesize_courseware(
 @router.get("/{project_id}/progress")
 async def get_progress(
     project_id: str,
+    token: str = Query(None),
     db: AsyncSession = Depends(get_db),
-    user_or_visitor=Depends(get_visitor_or_user),
 ):
+    # SSE can't send Authorization header — accept token as query param
+    from app.security.jwt import decode_token
+    import uuid as _uuid
+    try:
+        payload = decode_token(token or "")
+        from app.models.user import User
+        result = await db.execute(select(User).where(User.id == _uuid.UUID(payload["sub"])))
+        user = result.scalar_one_or_none()
+    except Exception:
+        user = None
     project = await get_project(db, project_id)
-    user, _ = user_or_visitor
     _check_ownership(project, user)
 
     from app.utils.redis_client import get_redis
