@@ -1,0 +1,71 @@
+# ====================
+# Maven Build
+# ====================
+target/
+build/
+!.mvn/wrapper/maven-wrapper.jar
+
+# ====================
+# IDE - IntelliJ IDEA
+# ====================
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# ====================
+# IDE - Eclipse
+# ====================
+.classpath
+.project
+.settings/
+.factorypath
+
+# ====================
+# IDE - VS Code
+# ====================
+.vscode/
+
+# ====================
+# Logs
+# ====================
+*.log
+logs/
+
+# ====================
+# OS Files
+# ====================
+.DS_Store
+Thumbs.db
+
+# ====================
+# Sensitive Config
+# ====================
+application-local.yml
+application-prod.yml
+*.secret
+*.key
+
+# ====================
+# Package Files
+# ====================
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+
+# ====================
+# Test & Coverage
+# ====================
+*.exec
+jacoco.exec
+coverage/
+
+# ====================
+# Temporary Files
+# ====================
+*.tmp
+*.bak
+*.swp

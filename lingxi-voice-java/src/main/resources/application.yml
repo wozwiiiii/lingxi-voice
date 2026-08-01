@@ -1,0 +1,55 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: lingxi-voice
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/lingxi}
+    username: ${POSTGRES_USER:lingxi}
+    password: ${POSTGRES_PASSWORD:lingxi}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+  threads:
+    virtual:
+      enabled: true
+
+jwt:
+  secret: ${JWT_SECRET_KEY:}
+  access-token-expiration: 30m
+  refresh-token-expiration: 7d
+
+tts:
+  provider: ${TTS_PROVIDER_CHAIN:cloud:siliconflow}
+  local:
+    inference-url: ${INFERENCE_SERVICE_URL:http://localhost:8001}
+  siliconflow:
+    api-key: ${SILICONFLOW_API_KEY:}
+    base-url: ${SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
+
+langchain4j:
+  openai:
+    api-key: ${DEEPSEEK_API_KEY:}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      tts:
+        failure-rate-threshold: 50
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 30s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
