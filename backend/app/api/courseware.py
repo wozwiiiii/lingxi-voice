@@ -162,17 +162,18 @@ async def synthesize_courseware(
             detail=f"课件状态为 {project.status}，无法开始合成",
         )
 
-    from app.tasks.courseware_tasks import synthesize_courseware_task
-    task = synthesize_courseware_task.delay(str(project.id))
-
     project.status = "synthesizing"
-    project.celery_task_id = task.id
     await db.flush()
+
+    # Run synthesis synchronously (no Celery — simpler for demo/small scale)
+    from app.tasks.courseware_tasks import _synthesize
+    import asyncio
+    asyncio.create_task(_synthesize(str(project.id)))
 
     return SynthesizeResponse(
         project_id=str(project.id),
         status="synthesizing",
-        message="课件合成已开始",
+        message="课件合成已开始（后台处理中）",
     )
 
 

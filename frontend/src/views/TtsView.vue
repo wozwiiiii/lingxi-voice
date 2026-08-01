@@ -80,6 +80,9 @@ onMounted(loadVoices);
           <template #renderItem="{ item }">
             <a-list-item>
               <a-list-item-meta :title="item.text" :description="`${item.voiceName} · ${item.time}`" />
+              <template #actions>
+                <a @click="audioUrl = item.url; audioFileName = item.fileName">播放</a>
+              </template>
             </a-list-item>
           </template>
         </a-list>
