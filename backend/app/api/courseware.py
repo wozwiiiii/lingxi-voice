@@ -163,22 +163,28 @@ async def synthesize_courseware(
         )
 
     project.status = "synthesizing"
-    await db.flush()
+    await db.commit()  # Commit now so _synthesize's own session won't deadlock on this row
 
-    # Run synthesis synchronously — errors surface immediately, progress bar shows real-time
+    # Run synthesis synchronously
     from app.tasks.courseware_tasks import _synthesize
     try:
         await _synthesize(str(project.id))
     except Exception as e:
-        project.status = "failed"
-        project.error_message = str(e)
-        await db.flush()
+        result = await db.execute(
+            select(CoursewareProject).where(CoursewareProject.id == uuid_mod.UUID(project_id))
+        )
+        project = result.scalar_one_or_none()
+        if project:
+            project.status = "failed"
+            project.error_message = str(e)
+            await db.commit()
         raise HTTPException(status_code=500, detail=f"合成失败: {e}")
 
+    await db.refresh(project)
     return SynthesizeResponse(
         project_id=str(project.id),
-        status="completed",
-        message="课件合成完成",
+        status=project.status,
+        message="课件合成完成" if project.status == "completed" else f"课件合成结束，状态: {project.status}",
     )
 
 
@@ -233,13 +239,17 @@ async def download_courseware(
     slides = await get_slides(db, project_id)
     zip_bytes = await build_zip(project, slides)
 
-    # Sanitize filename: strip all non-printable chars
+    # Sanitize filename and RFC 5987 encode for Content-Disposition
     import re
+    from urllib.parse import quote
     safe_title = re.sub(r'[^\w\s\-.]', '_', project.title)
+    encoded_filename = quote(f"{safe_title}.zip")
     return StreamingResponse(
         io.BytesIO(zip_bytes),
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={safe_title}.zip"},
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+        },
     )
 
 

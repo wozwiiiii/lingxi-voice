@@ -43,6 +43,7 @@ async def _synthesize(project_id: str):
 
         if not slides:
             await _update_project_status(db, project_id, "completed")
+            await db.commit()
             return
 
         semaphore = asyncio.Semaphore(CONCURRENCY)
@@ -58,22 +59,30 @@ async def _synthesize(project_id: str):
                 await _push_progress(project_id)
 
         await asyncio.gather(*[process_one(s) for s in slides], return_exceptions=True)
+        await db.commit()  # Persist all slide changes
 
-        # Re-check all slides
+        # Determine final status and push to Redis
         result = await db.execute(
             select(CoursewareSlide).where(
                 CoursewareSlide.project_id == uuid.UUID(project_id)
             )
         )
         all_slides = result.scalars().all()
+        total = len(all_slides)
+        completed = sum(1 for s in all_slides if s.status == "completed")
         failed_count = sum(1 for s in all_slides if s.status == "failed")
+        final_status = "failed" if failed_count == total else "completed"
 
-        if failed_count == 0:
-            await _update_project_status(db, project_id, "completed")
-        elif failed_count == len(all_slides):
-            await _update_project_status(db, project_id, "failed")
-        else:
-            await _update_project_status(db, project_id, "completed")
+        await _update_project_status(db, project_id, final_status)
+        await db.commit()
+
+        # Push final progress to Redis so SSE clients can terminate
+        redis = await get_redis()
+        await redis.set(
+            f"courseware:progress:{project_id}",
+            json.dumps({"current": completed, "total": total, "status": final_status}),
+            ex=7200,
+        )
 
 
 async def _synthesize_slide(db, slide: CoursewareSlide):
@@ -157,6 +166,7 @@ async def _push_progress(project_id: str):
 
 
 async def _update_project_status(db, project_id: str, status: str):
+    """Update project status within an existing session (caller must commit)."""
     result = await db.execute(
         select(CoursewareProject).where(
             CoursewareProject.id == uuid.UUID(project_id)
@@ -166,6 +176,22 @@ async def _update_project_status(db, project_id: str, status: str):
     if project:
         project.status = status
         await db.flush()
+
+
+async def _update_project_status_committed(project_id: str):
+    """Update project status in a fresh session with explicit commit."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(CoursewareSlide).where(
+                CoursewareSlide.project_id == uuid.UUID(project_id)
+            )
+        )
+        all_slides = result.scalars().all()
+        failed_count = sum(1 for s in all_slides if s.status == "failed")
+
+        new_status = "failed" if failed_count == len(all_slides) else "completed"
+        await _update_project_status(db, project_id, new_status)
+        await db.commit()
 
 
 @shared_task

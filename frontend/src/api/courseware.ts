@@ -51,7 +51,9 @@ export async function patchSlide(projectId: string, slideIndex: number, updates:
 }
 
 export async function startSynthesis(projectId: string): Promise<any> {
-  const { data } = await apiClient.post(`/courseware/${projectId}/synthesize`);
+  const { data } = await apiClient.post(`/courseware/${projectId}/synthesize`, null, {
+    timeout: 300000, // 5 min — synthesis is synchronous and may take a while for many slides
+  });
   return data;
 }
 

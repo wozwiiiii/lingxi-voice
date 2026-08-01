@@ -19,8 +19,6 @@ const voices = ref<VoiceResponse[]>([]);
 const loading = ref(false);
 const error = ref("");
 const synthesizing = ref(false);
-const progress = ref({ current: 0, total: 0 });
-let progressSource: EventSource | null = null;
 
 onMounted(async () => {
   if (!isNew && projectId) await loadProject();
@@ -62,33 +60,21 @@ async function saveSlide(slide: CoursewareSlide) {
 
 async function handleSynthesize() {
   if (!projectId) return;
-  loading.value = true;
+  synthesizing.value = true;
+  error.value = "";
   try {
-    await startSynthesis(projectId);
-    synthesizing.value = true;
-    progress.value = { current: 0, total: 0 };
-    error.value = "";
-    // Connect SSE for real-time progress (token via query param — SSE can't set headers)
-    const at = localStorage.getItem("access_token") || "";
-    progressSource = new EventSource(`/api/courseware/${projectId}/progress?token=${at}`);
-    progressSource.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      progress.value = data;
-      if (data.status === "completed" || data.status === "failed") {
-        synthesizing.value = false;
-        progressSource?.close();
-        loadProject(); // reload slide statuses
-        error.value = data.status === "completed" ? "合成完成！" : "合成失败，请重试";
-      }
-    };
-    progressSource.onerror = () => {
-      synthesizing.value = false;
-      progressSource?.close();
-      error.value = "进度连接断开，请刷新页面查看状态";
-    };
+    const result = await startSynthesis(projectId);
+    if (result.status === "completed") {
+      error.value = `合成完成！共 ${slides.value.length} 页`;
+      await loadProject(); // Reload slide statuses
+    } else {
+      error.value = result.message || "合成结束，部分页面可能失败";
+      await loadProject();
+    }
   } catch (e: any) {
-    error.value = e.response?.data?.detail || "合成失败";
-  } finally { loading.value = false; }
+    error.value = e.response?.data?.detail || "合成失败，请重试";
+    await loadProject(); // Reload anyway to show failed slides
+  } finally { synthesizing.value = false; }
 }
 
 async function handleDownload() {
@@ -97,12 +83,19 @@ async function handleDownload() {
     const blob = await downloadCourseware(projectId);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
+    a.style.display = "none";
     a.href = url;
-    a.download = `${projectId}.zip`;
+    a.download = title.value ? `${title.value}.zip` : "courseware.zip";
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    // Delay revoke to ensure browser starts download
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 150);
   } catch (e: any) {
-    error.value = e.response?.data?.detail || "下载失败";
+    // Try to read error from blob response
+    error.value = e.response?.data?.detail || e.message || "下载失败";
   }
 }
 
@@ -136,17 +129,12 @@ async function handleDelete() {
     <!-- Editor mode -->
     <template v-else-if="slides.length > 0">
       <a-space style="margin-bottom:16px">
-        <a-button type="primary" @click="handleSynthesize" :disabled="synthesizing">
-          {{ synthesizing ? '合成中...' : '一键合成' }}
+        <a-button type="primary" @click="handleSynthesize" :loading="synthesizing" :disabled="synthesizing">
+          {{ synthesizing ? '正在合成中，请稍候...' : '一键合成' }}
         </a-button>
         <a-button @click="handleDownload" :disabled="synthesizing">下载课件</a-button>
         <a-button danger @click="handleDelete">删除课件</a-button>
       </a-space>
-
-      <a-progress v-if="synthesizing && progress.total"
-        :percent="Math.round(progress.current / progress.total * 100)"
-        :format="() => `${progress.current}/${progress.total} 页`"
-        style="margin-bottom:16px" />
 
       <div v-for="s in slides" :key="s.id" style="margin-bottom:12px">
         <a-card size="small" :title="`第 ${s.slide_index} 页`">
