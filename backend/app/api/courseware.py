@@ -165,15 +165,20 @@ async def synthesize_courseware(
     project.status = "synthesizing"
     await db.flush()
 
-    # Run synthesis synchronously (no Celery — simpler for demo/small scale)
+    # Run synthesis synchronously — errors surface immediately, progress bar shows real-time
     from app.tasks.courseware_tasks import _synthesize
-    import asyncio
-    asyncio.create_task(_synthesize(str(project.id)))
+    try:
+        await _synthesize(str(project.id))
+    except Exception as e:
+        project.status = "failed"
+        project.error_message = str(e)
+        await db.flush()
+        raise HTTPException(status_code=500, detail=f"合成失败: {e}")
 
     return SynthesizeResponse(
         project_id=str(project.id),
-        status="synthesizing",
-        message="课件合成已开始（后台处理中）",
+        status="completed",
+        message="课件合成完成",
     )
 
 
