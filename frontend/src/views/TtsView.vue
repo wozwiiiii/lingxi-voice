@@ -11,12 +11,27 @@ const audioFileName = ref("");
 const loading = ref(false);
 const error = ref("");
 
-// Synthesis history
+// Synthesis history — persists in localStorage
 interface HistoryItem { text: string; voiceName: string; url: string; fileName: string; time: string }
-const history = ref<HistoryItem[]>([]);
+const STORAGE_KEY = "lingxi_tts_history";
+const history = ref<HistoryItem[]>(
+  JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")
+);
+
+function saveHistory() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(history.value.slice(0, 20)));
+}
+
+const audioKey = ref(0); // forces <audio> to reload on change
 
 function voiceName(id: string) {
   return voices.value.find(v => v.id === id)?.name || id;
+}
+
+function replayAudio(item: HistoryItem) {
+  audioUrl.value = item.url;
+  audioFileName.value = item.fileName;
+  audioKey.value++;
 }
 
 async function loadVoices() {
@@ -46,6 +61,7 @@ async function handleSynthesize() {
       fileName: audioFileName.value,
       time: new Date().toLocaleString("zh-CN"),
     });
+    saveHistory();
   } catch (e: any) {
     error.value = e.response?.data?.detail || "合成失败";
   } finally {
@@ -81,7 +97,7 @@ onMounted(loadVoices);
             <a-list-item>
               <a-list-item-meta :title="item.text" :description="`${item.voiceName} · ${item.time}`" />
               <template #actions>
-                <a @click="audioUrl = item.url; audioFileName = item.fileName">播放</a>
+                <a @click="replayAudio(item)">播放</a>
               </template>
             </a-list-item>
           </template>
@@ -90,7 +106,7 @@ onMounted(loadVoices);
     </a-col>
     <a-col :span="12">
       <a-card title="音频播放">
-        <audio v-if="audioUrl" controls :src="audioUrl" style="width:100%">不支持音频播放</audio>
+        <audio v-if="audioUrl" :key="audioKey" controls :src="audioUrl" style="width:100%">不支持音频播放</audio>
         <a-empty v-else description="合成语音后将在此播放" />
       </a-card>
     </a-col>
