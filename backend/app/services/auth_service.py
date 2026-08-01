@@ -11,6 +11,14 @@ from app.utils.redis_client import get_redis
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+def _hash_password(password: str) -> str:
+    """Hash with bcrypt. Truncates to 72 bytes if needed (bcrypt limit)."""
+    pw_bytes = password.encode("utf-8")
+    if len(pw_bytes) > 72:
+        pw_bytes = pw_bytes[:72]
+    return pwd_context.hash(pw_bytes.decode("utf-8", errors="replace"))
+
+
 async def register_user(db: AsyncSession, data: RegisterRequest) -> User:
     existing = await db.execute(
         select(User).where(
@@ -18,7 +26,6 @@ async def register_user(db: AsyncSession, data: RegisterRequest) -> User:
         )
     )
     if existing.scalar_one_or_none():
-        # Generic message — prevents user enumeration
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Registration failed. If you already have an account, please log in.",
@@ -26,7 +33,7 @@ async def register_user(db: AsyncSession, data: RegisterRequest) -> User:
     user = User(
         email=data.email,
         username=data.username,
-        password_hash=pwd_context.hash(data.password),
+        password_hash=_hash_password(data.password),
     )
     db.add(user)
     await db.flush()
