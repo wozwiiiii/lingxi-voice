@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { listCourseware, type CoursewareProject } from "../api/courseware";
+import apiClient from "../api/client";
 
 const router = useRouter();
 const presets = ref<CoursewareProject[]>([]);
@@ -11,15 +12,18 @@ const loading = ref(false);
 async function load() {
   loading.value = true;
   try {
-    const [p, m] = await Promise.all([
-      listCourseware("preset"),
-      listCourseware("my"),
-    ]);
+    const [p, m] = await Promise.all([listCourseware("preset"), listCourseware("my")]);
     presets.value = p.projects;
     myProjects.value = m.projects;
-  } finally {
-    loading.value = false;
-  }
+  } finally { loading.value = false; }
+}
+
+async function deleteMy(id: string, title: string) {
+  if (!confirm(`确定删除"${title}"？此操作不可恢复。`)) return;
+  try {
+    await apiClient.delete(`/courseware/${id}`);
+    myProjects.value = myProjects.value.filter(p => p.id !== id);
+  } catch (e: any) { alert(e.response?.data?.detail || "删除失败"); }
 }
 
 onMounted(load);
@@ -35,19 +39,24 @@ onMounted(load);
     <a-typography-title :level="4">官方示例</a-typography-title>
     <a-row :gutter="16">
       <a-col v-for="p in presets" :key="p.id" :span="6">
-        <a-card :title="p.title" hoverable @click="router.push(`/courseware/${p.id}`)">
+        <a-card :title="p.title">
           <p>{{ p.description }}</p>
           <a-tag color="blue">官方示例</a-tag>
         </a-card>
       </a-col>
+      <a-empty v-if="!presets.length" description="暂无官方示例" />
     </a-row>
 
-    <a-typography-title :level="4" style="margin-top: 24px">我的课件</a-typography-title>
+    <a-typography-title :level="4" style="margin-top:24px">我的课件</a-typography-title>
     <a-row :gutter="16">
       <a-col v-for="p in myProjects" :key="p.id" :span="6">
-        <a-card :title="p.title" hoverable @click="router.push(`/courseware/${p.id}`)">
-          <a-tag :color="p.status === 'completed' ? 'green' : 'orange'">{{ p.status }}</a-tag>
+        <a-card :title="p.title">
+          <a-tag :color="p.status==='completed'?'green':'orange'">{{ p.status }}</a-tag>
           <p>{{ p.slides_count }} 页</p>
+          <a-space style="margin-top:8px">
+            <a-button size="small" @click="router.push(`/courseware/${p.id}`)">编辑</a-button>
+            <a-button size="small" danger @click="deleteMy(p.id, p.title)">删除</a-button>
+          </a-space>
         </a-card>
       </a-col>
     </a-row>

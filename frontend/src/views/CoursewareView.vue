@@ -1,85 +1,140 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { getVoices, type VoiceResponse } from "../api/tts";
 import {
-  uploadPPTX,
-  listCourseware,
-  getSlides,
-  patchSlide,
-  startSynthesis,
-  downloadCourseware,
-  type CoursewareProject,
+  uploadPPTX, getSlides, patchSlide, startSynthesis, downloadCourseware,
   type CoursewareSlide,
 } from "../api/courseware";
+import apiClient from "../api/client";
 
 const route = useRoute();
 const router = useRouter();
-
 const projectId = route.params.id as string | undefined;
 const isNew = route.name === "courseware-new";
 
-const project = ref<CoursewareProject | null>(null);
+const title = ref("");
 const slides = ref<CoursewareSlide[]>([]);
+const voices = ref<VoiceResponse[]>([]);
 const loading = ref(false);
+const error = ref("");
+
+onMounted(async () => {
+  if (!isNew && projectId) await loadProject();
+  try { voices.value = await getVoices(); } catch { /* ignore */ }
+});
 
 async function loadProject() {
-  if (!projectId) return;
   loading.value = true;
   try {
-    slides.value = await getSlides(projectId);
-  } finally {
-    loading.value = false;
-  }
+    slides.value = await getSlides(projectId!);
+    try {
+      const r = await apiClient.get(`/courseware/${projectId}`);
+      title.value = r.data.title;
+    } catch { /* preset may not have slides */ }
+  } catch (e: any) {
+    error.value = e.response?.status === 404 ? "课件不存在或无权访问" : "加载失败";
+  } finally { loading.value = false; }
 }
 
 async function handleFileUpload(file: File) {
-  const proj = await uploadPPTX(file);
-  router.push(`/courseware/${proj.id}`);
+  loading.value = true;
+  try {
+    const proj = await uploadPPTX(file);
+    router.push(`/courseware/${proj.id}`);
+  } catch (e: any) {
+    error.value = e.response?.data?.detail || "上传失败";
+  } finally { loading.value = false; }
+}
+
+async function saveSlide(slide: CoursewareSlide) {
+  if (!projectId) return;
+  try {
+    await patchSlide(projectId, slide.slide_index, {
+      edited_text: slide.edited_text,
+      voice_id: slide.voice_id,
+    });
+  } catch { /* ignore */ }
 }
 
 async function handleSynthesize() {
   if (!projectId) return;
-  await startSynthesis(projectId);
+  loading.value = true;
+  try {
+    await startSynthesis(projectId);
+    error.value = "合成已开始，请稍后刷新查看进度";
+  } catch (e: any) {
+    error.value = e.response?.data?.detail || "合成失败";
+  } finally { loading.value = false; }
 }
 
 async function handleDownload() {
   if (!projectId) return;
-  const blob = await downloadCourseware(projectId);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${projectId}.zip`;
-  a.click();
-  URL.revokeObjectURL(url);
+  try {
+    const blob = await downloadCourseware(projectId);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${projectId}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e: any) {
+    error.value = e.response?.data?.detail || "下载失败";
+  }
+}
+
+async function handleDelete() {
+  if (!projectId || !confirm("确定删除此课件？")) return;
+  try {
+    await apiClient.delete(`/courseware/${projectId}`);
+    router.push("/courseware");
+  } catch (e: any) {
+    error.value = e.response?.data?.detail || "删除失败";
+  }
 }
 </script>
 
 <template>
   <a-spin :spinning="loading">
     <a-typography-title :level="3">
-      {{ isNew ? "创建新课件" : "编辑课件" }}
+      {{ isNew ? "创建新课件" : (title || "课件详情") }}
     </a-typography-title>
+    <a-alert v-if="error" type="info" :message="error" style="margin-bottom:12px" closable @close="error=''" />
 
+    <!-- Upload mode -->
     <template v-if="isNew">
-      <a-upload
-        accept=".pptx"
-        :before-upload="(file: File) => { handleFileUpload(file); return false; }"
-      >
-        <a-button type="primary">上传 PPTX 文件</a-button>
+      <a-upload accept=".pptx" :before-upload="(file:any) => { handleFileUpload(file); return false }"
+        :show-upload-list="false">
+        <a-button type="primary" size="large">选择 PPTX 文件上传</a-button>
       </a-upload>
+      <p style="margin-top:8px;color:#888">仅支持 .pptx 格式，大小不超过 20MB</p>
     </template>
 
+    <!-- Editor mode -->
     <template v-else-if="slides.length > 0">
-      <a-space style="margin-bottom: 16px">
+      <a-space style="margin-bottom:16px">
         <a-button type="primary" @click="handleSynthesize">一键合成</a-button>
         <a-button @click="handleDownload">下载课件</a-button>
+        <a-button danger @click="handleDelete">删除课件</a-button>
       </a-space>
 
-      <a-table :data-source="slides" :columns="[
-        { title: '页码', dataIndex: 'slide_index', key: 'slide_index' },
-        { title: '原文', dataIndex: 'original_text', key: 'original_text' },
-        { title: '状态', dataIndex: 'status', key: 'status' },
-      ]" row-key="id" />
+      <div v-for="s in slides" :key="s.id" style="margin-bottom:12px">
+        <a-card size="small" :title="`第 ${s.slide_index} 页`">
+          <a-textarea v-model:value="s.edited_text"
+            :placeholder="s.original_text || '(无文本内容，可手动输入)'" :rows="3"
+            @blur="saveSlide(s)" />
+          <a-select v-model:value="s.voice_id" placeholder="选择声音" style="width:200px;margin-top:4px"
+            @change="saveSlide(s)" allow-clear>
+            <a-select-option v-for="v in voices" :key="v.id" :value="v.id">{{ v.name }}</a-select-option>
+          </a-select>
+          <a-tag v-if="s.status==='completed'" color="green" style="margin-left:8px">已合成</a-tag>
+          <a-tag v-else-if="s.status==='failed'" color="red" style="margin-left:8px">失败</a-tag>
+          <a-tag v-else color="default" style="margin-left:8px">待合成</a-tag>
+        </a-card>
+      </div>
     </template>
+
+    <!-- No slides (preset with 0 slides) -->
+    <a-empty v-else description="此课件暂无内容" />
   </a-spin>
 </template>
