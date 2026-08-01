@@ -8,6 +8,7 @@ alembic==1.14.0
 celery[redis]==5.4.0
 redis==5.2.1
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 pyjwt[crypto]==2.10.1
 httpx==0.28.1
 soundfile==0.12.1
@@ -18,3 +19,4 @@ prometheus-client==0.21.1
 openai==1.59.2
 python-pptx==1.0.2
 defusedxml==0.7.1
+email-validator==2.2.0

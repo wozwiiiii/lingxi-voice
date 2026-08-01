@@ -29,9 +29,9 @@ class CoursewareProjectResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @field_validator("id", "voice_id", mode="before")
+    @field_validator("id", "voice_id", "created_at", mode="before")
     @classmethod
-    def coerce_uuid(cls, v):
+    def coerce_to_str(cls, v):
         return str(v) if v is not None else None
 
 

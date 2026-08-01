@@ -84,7 +84,12 @@ async def synthesize_tts(
             instruction=request.instruction,
         )
         start = time.monotonic()
-        result = await provider.synthesize(processed_text, request.voice_id, params)
+        try:
+            result = await provider.synthesize(processed_text, request.voice_id, params)
+        except ValueError as e:
+            await redis.delete(lock_key)
+            raise HTTPException(status_code=503, detail=str(e))
+
         duration_ms = int((time.monotonic() - start) * 1000)
 
         ext = result.format or request.output_format

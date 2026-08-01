@@ -1,9 +1,10 @@
 """SiliconFlow CosyVoice API provider (OpenAI-compatible protocol)."""
 
+import logging
 from typing import AsyncIterator
 
 import httpx
-from openai import AsyncOpenAI
+from openai import APIStatusError, AsyncOpenAI
 
 from app.config import settings
 from app.providers.base import (
@@ -13,6 +14,8 @@ from app.providers.base import (
     TTSProvider,
     VoiceMetadata,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class SiliconFlowProvider(TTSProvider):
@@ -46,20 +49,48 @@ class SiliconFlowProvider(TTSProvider):
         self, text: str, voice_id: str, params: SynthesisParams
     ) -> AudioResult:
         import time
+        import uuid as uuid_mod
+
+        # Resolve the real API voice ID from DB if voice_id is a UUID
+        actual_voice_id = voice_id
+        try:
+            uid = uuid_mod.UUID(voice_id)
+            from app.database import AsyncSessionLocal
+            from app.models.voice import Voice
+            from sqlalchemy import select
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(Voice).where(Voice.id == uid))
+                voice = result.scalar_one_or_none()
+                if voice and voice.provider_metadata:
+                    actual_voice_id = voice.provider_metadata.get("voice_id", voice_id)
+        except (ValueError, AttributeError):
+            pass  # voice_id is already a plain string, use as-is
 
         start = time.monotonic()
-        response = await self._client.audio.speech.create(
-            model="cosyvoice2-0.5b",
-            voice=voice_id,
-            input=text,
-            speed=params.speed,
-            response_format="mp3",  # Audio format, NOT emotion
-            extra_body=(
-                {"emotion": params.emotion, "language": params.language}
-                if params.emotion
-                else {}
-            ),
-        )
+        try:
+            response = await self._client.audio.speech.create(
+                model="FunAudioLLM/CosyVoice2-0.5B",
+                voice=actual_voice_id,
+                input=text,
+                speed=params.speed,
+                response_format="mp3",
+                extra_body=(
+                    {"emotion": params.emotion, "language": params.language}
+                    if params.emotion
+                    else {}
+                ),
+            )
+        except APIStatusError as e:
+            logger.error(f"SiliconFlow API error: {e.status_code} - {e.body}")
+            if e.status_code == 402:
+                raise ValueError("语音服务账户余额不足，请充值后重试") from e
+            elif e.status_code == 400:
+                raise ValueError(f"语音合成参数错误: {e.body}") from e
+            elif e.status_code == 429:
+                raise ValueError("语音服务请求过于频繁，请稍后重试") from e
+            else:
+                raise ValueError(f"语音服务暂时不可用 (错误码 {e.status_code})，请稍后重试") from e
+
         audio_data = response.content
         duration_ms = int((time.monotonic() - start) * 1000)
         return AudioResult(audio_data=audio_data, format="mp3", duration_ms=duration_ms)
@@ -76,7 +107,7 @@ class SiliconFlowProvider(TTSProvider):
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "cosyvoice2-0.5b",
+                    "model": "FunAudioLLM/CosyVoice2-0.5B",
                     "voice": voice_id,
                     "input": text,
                     "speed": params.speed,
