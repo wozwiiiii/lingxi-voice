@@ -156,7 +156,7 @@ async def synthesize_courseware(
 ):
     project = await get_project(db, project_id)
     _check_ownership(project, user)
-    if project.status not in ("ready", "failed"):
+    if project.status not in ("ready", "failed", "synthesizing"):
         raise HTTPException(
             status_code=409,
             detail=f"课件状态为 {project.status}，无法开始合成",

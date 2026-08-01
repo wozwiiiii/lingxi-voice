@@ -18,6 +18,9 @@ const slides = ref<CoursewareSlide[]>([]);
 const voices = ref<VoiceResponse[]>([]);
 const loading = ref(false);
 const error = ref("");
+const synthesizing = ref(false);
+const progress = ref({ current: 0, total: 0 });
+let progressSource: EventSource | null = null;
 
 onMounted(async () => {
   if (!isNew && projectId) await loadProject();
@@ -62,7 +65,26 @@ async function handleSynthesize() {
   loading.value = true;
   try {
     await startSynthesis(projectId);
-    error.value = "合成已开始，请稍后刷新查看进度";
+    synthesizing.value = true;
+    progress.value = { current: 0, total: 0 };
+    error.value = "";
+    // Connect SSE for real-time progress
+    progressSource = new EventSource(`/api/courseware/${projectId}/progress`);
+    progressSource.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      progress.value = data;
+      if (data.status === "completed" || data.status === "failed") {
+        synthesizing.value = false;
+        progressSource?.close();
+        loadProject(); // reload slide statuses
+        error.value = data.status === "completed" ? "合成完成！" : "合成失败，请重试";
+      }
+    };
+    progressSource.onerror = () => {
+      synthesizing.value = false;
+      progressSource?.close();
+      error.value = "进度连接断开，请刷新页面查看状态";
+    };
   } catch (e: any) {
     error.value = e.response?.data?.detail || "合成失败";
   } finally { loading.value = false; }
@@ -113,10 +135,17 @@ async function handleDelete() {
     <!-- Editor mode -->
     <template v-else-if="slides.length > 0">
       <a-space style="margin-bottom:16px">
-        <a-button type="primary" @click="handleSynthesize">一键合成</a-button>
-        <a-button @click="handleDownload">下载课件</a-button>
+        <a-button type="primary" @click="handleSynthesize" :disabled="synthesizing">
+          {{ synthesizing ? '合成中...' : '一键合成' }}
+        </a-button>
+        <a-button @click="handleDownload" :disabled="synthesizing">下载课件</a-button>
         <a-button danger @click="handleDelete">删除课件</a-button>
       </a-space>
+
+      <a-progress v-if="synthesizing && progress.total"
+        :percent="Math.round(progress.current / progress.total * 100)"
+        :format="() => `${progress.current}/${progress.total} 页`"
+        style="margin-bottom:16px" />
 
       <div v-for="s in slides" :key="s.id" style="margin-bottom:12px">
         <a-card size="small" :title="`第 ${s.slide_index} 页`">
