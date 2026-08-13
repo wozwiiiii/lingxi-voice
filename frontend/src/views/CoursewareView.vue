@@ -121,7 +121,7 @@ async function handleDelete() {
     <template v-if="isNew">
       <a-card class="upload-card" :bordered="false">
         <div class="upload-body">
-          <div class="upload-icon">📄</div>
+          <div class="upload-icon" aria-hidden="true">📄</div>
           <h3 class="upload-title">上传 PPTX 课件</h3>
           <p class="upload-hint">仅支持 .pptx 格式，大小不超过 20MB</p>
           <a-upload
