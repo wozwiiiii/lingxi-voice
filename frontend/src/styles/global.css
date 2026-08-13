@@ -1,0 +1,20 @@
+/* 全局样式 —— 字体、背景、通用工具类 */
+
+body {
+  margin: 0;
+  background-color: #f5f5f5;
+  color: #424242;
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei",
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 卡片悬停微交互（配合 <a-card> 的 hoverable 使用） */
+.hover-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.hover-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
