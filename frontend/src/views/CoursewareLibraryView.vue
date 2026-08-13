@@ -9,6 +9,24 @@ const presets = ref<CoursewareProject[]>([]);
 const myProjects = ref<CoursewareProject[]>([]);
 const loading = ref(false);
 
+// 状态码 → 中文标签 + 颜色
+function statusLabel(status: string): string {
+  const map: Record<string, string> = {
+    completed: "已完成",
+    processing: "合成中",
+    failed: "部分失败",
+    pending: "待合成",
+  };
+  return map[status] || status;
+}
+
+function statusColor(status: string): string {
+  if (status === "completed") return "green";
+  if (status === "failed") return "red";
+  if (status === "processing") return "orange";
+  return "default";
+}
+
 async function load() {
   loading.value = true;
   try {
@@ -31,35 +49,107 @@ onMounted(load);
 
 <template>
   <a-spin :spinning="loading">
-    <a-typography-title :level="3">课件库</a-typography-title>
-    <a-button type="primary" @click="router.push('/courseware/new')" style="margin-bottom: 16px">
-      创建新课件
-    </a-button>
+    <div class="page-head">
+      <h1 class="page-title">课件库</h1>
+      <a-button type="primary" size="large" @click="router.push('/courseware/new')">
+        创建新课件
+      </a-button>
+    </div>
 
-    <a-typography-title :level="4">官方示例</a-typography-title>
-    <a-row :gutter="16">
-      <a-col v-for="p in presets" :key="p.id" :span="6">
-        <a-card :title="p.title">
-          <p>{{ p.description }}</p>
-          <a-tag color="blue">官方示例</a-tag>
-        </a-card>
-      </a-col>
+    <h2 class="section-title">官方示例</h2>
+    <div class="card-grid">
+      <a-card
+        v-for="p in presets"
+        :key="p.id"
+        class="hover-card preset-card"
+        hoverable
+        role="link"
+        tabindex="0"
+        @click="router.push(`/courseware/${p.id}`)"
+        @keydown.enter.prevent="router.push(`/courseware/${p.id}`)"
+        @keydown.space.prevent="router.push(`/courseware/${p.id}`)"
+      >
+        <div class="card-body">
+          <h3 class="card-title">{{ p.title }}</h3>
+          <p class="card-desc">{{ p.description || "暂无描述" }}</p>
+          <a-tag color="orange">官方示例</a-tag>
+        </div>
+      </a-card>
       <a-empty v-if="!presets.length" description="暂无官方示例" />
-    </a-row>
+    </div>
 
-    <a-typography-title :level="4" style="margin-top:24px">我的课件</a-typography-title>
-    <a-row :gutter="16">
-      <a-col v-for="p in myProjects" :key="p.id" :span="6">
-        <a-card :title="p.title">
-          <a-tag :color="p.status==='completed'?'green':'orange'">{{ p.status }}</a-tag>
-          <p>{{ p.slides_count }} 页</p>
-          <a-space style="margin-top:8px">
-            <a-button size="small" @click="router.push(`/courseware/${p.id}`)">编辑</a-button>
+    <h2 class="section-title" style="margin-top: 32px">我的课件</h2>
+    <div class="card-grid">
+      <a-card v-for="p in myProjects" :key="p.id" class="hover-card" hoverable>
+        <div class="card-body">
+          <div class="card-title-row">
+            <h3 class="card-title">{{ p.title }}</h3>
+            <a-tag :color="statusColor(p.status)">{{ statusLabel(p.status) }}</a-tag>
+          </div>
+          <p class="card-desc">{{ p.slides_count }} 页</p>
+          <a-space>
+            <a-button size="small" type="primary" @click="router.push(`/courseware/${p.id}`)">
+              编辑
+            </a-button>
             <a-button size="small" danger @click="deleteMy(p.id, p.title)">删除</a-button>
           </a-space>
-        </a-card>
-      </a-col>
-    </a-row>
-    <a-empty v-if="myProjects.length === 0" description="还没有创建课件" />
+        </div>
+      </a-card>
+      <a-empty v-if="myProjects.length === 0" description="还没有创建课件" />
+    </div>
   </a-spin>
 </template>
+
+<style scoped>
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0;
+  color: #424242;
+}
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: #424242;
+}
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.preset-card:focus-visible {
+  outline: 2px solid #ff7043;
+  outline-offset: 2px;
+}
+.card-body {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: #424242;
+}
+.card-desc {
+  color: #757575;
+  font-size: 13px;
+  margin: 0;
+  flex: 1;
+}
+</style>
