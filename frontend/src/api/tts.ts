@@ -1,5 +1,6 @@
 import apiClient from "./client";
 import type { TTSRequest, TTSResponse, VoiceResponse, ProviderCapabilities } from "../types";
+export type { VoiceResponse } from "../types";
 
 export async function synthesizeTTS(req: TTSRequest): Promise<TTSResponse> {
   const { data } = await apiClient.post<TTSResponse>("/tts/synthesize", req);
