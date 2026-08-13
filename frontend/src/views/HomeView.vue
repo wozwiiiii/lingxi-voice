@@ -65,7 +65,11 @@ const features = [
         :key="f.path"
         class="feature-card hover-card"
         hoverable
+        role="link"
+        tabindex="0"
         @click="router.push(f.path)"
+        @keydown.enter.prevent="router.push(f.path)"
+        @keydown.space.prevent="router.push(f.path)"
       >
         <div class="feature-icon">
           <component :is="f.icon" />
@@ -79,7 +83,7 @@ const features = [
 
 <style scoped>
 .hero {
-  background: linear-gradient(135deg, #ff7043 0%, #ffb74d 100%);
+  background: linear-gradient(135deg, #e64a19 0%, #d84315 100%);
   border-radius: 16px;
   padding: 48px 32px;
   color: #fff;
@@ -92,17 +96,16 @@ const features = [
 }
 .hero-subtitle {
   font-size: 16px;
-  opacity: 0.95;
   margin: 0 0 20px;
 }
 .hero-btn {
   background: #fff;
-  color: #ff7043;
+  color: #bf360c;
   border: none;
   font-weight: 500;
 }
 .hero-btn:hover {
-  color: #f4511e;
+  color: #8a2b0b;
   border: none;
 }
 .feature-grid {
@@ -131,5 +134,9 @@ const features = [
   font-size: 14px;
   line-height: 1.6;
   margin: 0;
+}
+.feature-card:focus-visible {
+  outline: 2px solid #ff7043;
+  outline-offset: 2px;
 }
 </style>
