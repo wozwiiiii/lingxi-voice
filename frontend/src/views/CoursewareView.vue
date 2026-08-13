@@ -112,9 +112,9 @@ async function handleDelete() {
 
 <template>
   <a-spin :spinning="loading">
-    <a-typography-title :level="3">
+    <h1 class="page-title">
       {{ isNew ? "创建新课件" : (title || "课件详情") }}
-    </a-typography-title>
+    </h1>
     <a-alert v-if="error" type="info" :message="error" style="margin-bottom:12px" closable @close="error=''" />
 
     <!-- Upload mode -->
@@ -167,6 +167,12 @@ async function handleDelete() {
 </template>
 
 <style scoped>
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 16px;
+  color: #424242;
+}
 .upload-card {
   max-width: 560px;
   border-radius: 16px;

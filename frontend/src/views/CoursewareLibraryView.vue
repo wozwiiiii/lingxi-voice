@@ -101,10 +101,22 @@ onMounted(load);
           </div>
           <p class="card-desc">{{ p.slides_count }} 页</p>
           <a-space>
-            <a-button size="small" type="primary" @click="router.push(`/courseware/${p.id}`)">
+            <a-button
+              size="small"
+              type="primary"
+              @click.stop="router.push(`/courseware/${p.id}`)"
+              @keydown.stop
+            >
               编辑
             </a-button>
-            <a-button size="small" danger @click.stop="deleteMy(p.id, p.title)">删除</a-button>
+            <a-button
+              size="small"
+              danger
+              @click.stop="deleteMy(p.id, p.title)"
+              @keydown.stop
+            >
+              删除
+            </a-button>
           </a-space>
         </div>
       </a-card>
