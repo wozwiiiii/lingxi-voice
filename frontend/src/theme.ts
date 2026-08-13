@@ -29,6 +29,7 @@ export const themeConfig = {
   components: {
     Button: {
       colorPrimaryHover: colors.primaryHover,
+      // 仅作用于 size="large" 的主操作按钮（登录、合成等），默认按钮保持 32px
       controlHeightLG: 48,
     },
     Card: {
