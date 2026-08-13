@@ -17,7 +17,19 @@ function switchMode(m: "login" | "register") {
   error.value = "";
 }
 
+function extractError(e: any, fallback: string): string {
+  const detail = e.response?.data?.detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d: { msg?: string }) => d.msg || "")
+      .filter(Boolean)
+      .join("；");
+  }
+  return detail || fallback;
+}
+
 async function handleSubmit() {
+  if (loading.value) return;
   loading.value = true;
   error.value = "";
   try {
@@ -25,12 +37,17 @@ async function handleSubmit() {
       await auth.loginUser(email.value, password.value);
     } else {
       await auth.registerUser(email.value, username.value, password.value);
-      await auth.loginUser(email.value, password.value);
+      try {
+        await auth.loginUser(email.value, password.value);
+      } catch {
+        error.value = "注册成功，但自动登录失败，请返回登录";
+        mode.value = "login";
+        return;
+      }
     }
     router.push("/");
   } catch (e: any) {
-    error.value =
-      e.response?.data?.detail || (mode.value === "login" ? "登录失败" : "注册失败");
+    error.value = extractError(e, mode.value === "login" ? "登录失败" : "注册失败");
   } finally {
     loading.value = false;
   }
@@ -78,10 +95,10 @@ async function handleSubmit() {
       />
 
       <div class="login-footer">
-        <a-button v-if="mode === 'login'" type="link" @click="switchMode('register')">
+        <a-button v-if="mode === 'login'" type="link" :disabled="loading" @click="switchMode('register')">
           还没有账号？去注册
         </a-button>
-        <a-button v-else type="link" @click="switchMode('login')">
+        <a-button v-else type="link" :disabled="loading" @click="switchMode('login')">
           已有账号？去登录
         </a-button>
       </div>
