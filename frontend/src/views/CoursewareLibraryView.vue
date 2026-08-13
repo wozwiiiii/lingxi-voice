@@ -13,9 +13,11 @@ const loading = ref(false);
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
     completed: "已完成",
-    processing: "合成中",
-    failed: "部分失败",
+    synthesizing: "合成中",
+    failed: "合成失败",
     pending: "待合成",
+    ready: "待合成",
+    parsing: "解析中",
   };
   return map[status] || status;
 }
@@ -23,7 +25,8 @@ function statusLabel(status: string): string {
 function statusColor(status: string): string {
   if (status === "completed") return "green";
   if (status === "failed") return "red";
-  if (status === "processing") return "orange";
+  if (status === "synthesizing") return "orange";
+  if (status === "parsing") return "blue";
   return "default";
 }
 
@@ -80,7 +83,17 @@ onMounted(load);
 
     <h2 class="section-title" style="margin-top: 32px">我的课件</h2>
     <div class="card-grid">
-      <a-card v-for="p in myProjects" :key="p.id" class="hover-card" hoverable>
+      <a-card
+        v-for="p in myProjects"
+        :key="p.id"
+        class="hover-card my-card"
+        hoverable
+        role="link"
+        tabindex="0"
+        @click="router.push(`/courseware/${p.id}`)"
+        @keydown.enter.prevent="router.push(`/courseware/${p.id}`)"
+        @keydown.space.prevent="router.push(`/courseware/${p.id}`)"
+      >
         <div class="card-body">
           <div class="card-title-row">
             <h3 class="card-title">{{ p.title }}</h3>
@@ -91,7 +104,7 @@ onMounted(load);
             <a-button size="small" type="primary" @click="router.push(`/courseware/${p.id}`)">
               编辑
             </a-button>
-            <a-button size="small" danger @click="deleteMy(p.id, p.title)">删除</a-button>
+            <a-button size="small" danger @click.stop="deleteMy(p.id, p.title)">删除</a-button>
           </a-space>
         </div>
       </a-card>
@@ -124,9 +137,13 @@ onMounted(load);
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 16px;
 }
-.preset-card:focus-visible {
+.preset-card:focus-visible,
+.my-card:focus-visible {
   outline: 2px solid #ff7043;
   outline-offset: 2px;
+}
+.card-grid > :deep(.ant-empty) {
+  grid-column: 1 / -1;
 }
 .card-body {
   min-height: 120px;
