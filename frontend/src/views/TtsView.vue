@@ -74,28 +74,58 @@ onMounted(loadVoices);
 
 <template>
   <a-row :gutter="24">
-    <a-col :span="12">
-      <a-card title="文本转语音">
-        <a-textarea v-model:value="text" :rows="6" placeholder="请输入要合成的文本..." :maxlength="1000" />
-        <a-space style="margin-top: 12px" direction="vertical">
-          <a-select v-model:value="selectedVoice" placeholder="选择声音" style="width: 260px">
-            <a-select-option v-for="v in voices" :key="v.id" :value="v.id">
-              {{ v.name }} ({{ v.type === "preset" ? "预设" : "克隆" }})
-            </a-select-option>
-          </a-select>
-          <a-space>
-            <a-button type="primary" :loading="loading" @click="handleSynthesize">合成</a-button>
-            <a-button v-if="audioUrl" @click="downloadAudio">下载音频</a-button>
-          </a-space>
+    <!-- 左侧：输入面板 -->
+    <a-col :xs="24" :lg="12">
+      <a-card class="panel" :bordered="false">
+        <h3 class="panel-title">文本内容</h3>
+        <a-textarea
+          v-model:value="text"
+          :rows="8"
+          :maxlength="1000"
+          show-count
+          placeholder="请输入要合成的文本..."
+        />
+
+        <h3 class="panel-title" style="margin-top: 16px">选择声音</h3>
+        <a-select v-model:value="selectedVoice" placeholder="选择声音" style="width: 100%">
+          <a-select-option v-for="v in voices" :key="v.id" :value="v.id">
+            {{ v.name }}（{{ v.type === "preset" ? "预设" : "克隆" }}）
+          </a-select-option>
+        </a-select>
+
+        <a-space style="margin-top: 16px">
+          <a-button
+            type="primary"
+            size="large"
+            :loading="loading"
+            :disabled="!text || !selectedVoice"
+            @click="handleSynthesize"
+          >
+            开始合成
+          </a-button>
+          <a-button v-if="audioUrl" size="large" @click="downloadAudio">下载音频</a-button>
         </a-space>
-        <a-alert v-if="error" type="error" :message="error" style="margin-top:12px" closable @close="error=''" />
+
+        <a-alert
+          v-if="error"
+          type="error"
+          :message="error"
+          style="margin-top: 12px"
+          closable
+          @close="error = ''"
+        />
       </a-card>
 
-      <a-card title="历史记录" style="margin-top:16px" v-if="history.length">
+      <!-- 历史记录 -->
+      <a-card class="panel" :bordered="false" v-if="history.length">
+        <h3 class="panel-title">历史记录</h3>
         <a-list :data-source="history" size="small">
           <template #renderItem="{ item }">
             <a-list-item>
-              <a-list-item-meta :title="item.text" :description="`${item.voiceName} · ${item.time}`" />
+              <a-list-item-meta
+                :title="item.text"
+                :description="`${item.voiceName} · ${item.time}`"
+              />
               <template #actions>
                 <a @click="replayAudio(item)">播放</a>
               </template>
@@ -104,11 +134,36 @@ onMounted(loadVoices);
         </a-list>
       </a-card>
     </a-col>
-    <a-col :span="12">
-      <a-card title="音频播放">
-        <audio v-if="audioUrl" :key="audioKey" controls :src="audioUrl" style="width:100%">不支持音频播放</audio>
+
+    <!-- 右侧：预览 -->
+    <a-col :xs="24" :lg="12">
+      <a-card class="panel" :bordered="false">
+        <h3 class="panel-title">音频预览</h3>
+        <audio
+          v-if="audioUrl"
+          :key="audioKey"
+          controls
+          :src="audioUrl"
+          style="width: 100%"
+        >
+          不支持音频播放
+        </audio>
         <a-empty v-else description="合成语音后将在此播放" />
       </a-card>
     </a-col>
   </a-row>
 </template>
+
+<style scoped>
+.panel {
+  background: #fff;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.panel-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: #424242;
+}
+</style>
