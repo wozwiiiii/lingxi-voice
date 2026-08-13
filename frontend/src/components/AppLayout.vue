@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, ref } from "vue";
+import { h, ref, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import {
@@ -23,6 +23,11 @@ const menuItems = [
   { key: "/courseware", icon: () => h(FileTextOutlined), label: "课件库" },
 ];
 
+// 让课件库菜单在 /courseware、/courseware/new、/courseware/:id 下都保持高亮
+const selectedKeys = computed(() =>
+  route.path.startsWith("/courseware") ? ["/courseware"] : [route.path]
+);
+
 function handleMenuClick({ key }: { key: string }) {
   router.push(key);
 }
@@ -45,7 +50,8 @@ function onBreakpoint(broken: boolean) {
       collapsible
       :trigger="null"
       :width="220"
-      breakpoint="lg"
+      theme="light"
+      breakpoint="xl"
       @breakpoint="onBreakpoint"
     >
       <div class="logo">
@@ -55,7 +61,7 @@ function onBreakpoint(broken: boolean) {
       <a-menu
         theme="light"
         mode="inline"
-        :selected-keys="[route.path]"
+        :selected-keys="selectedKeys"
         :items="menuItems"
         @click="handleMenuClick"
       />
@@ -64,7 +70,7 @@ function onBreakpoint(broken: boolean) {
     <a-layout>
       <!-- 顶部栏 -->
       <a-layout-header class="header">
-        <a-button type="text" class="trigger" @click="collapsed = !collapsed">
+        <a-button type="text" class="trigger" aria-label="收起/展开菜单" @click="collapsed = !collapsed">
           <MenuUnfoldOutlined v-if="collapsed" />
           <MenuFoldOutlined v-else />
         </a-button>
