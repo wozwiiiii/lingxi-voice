@@ -119,11 +119,20 @@ async function handleDelete() {
 
     <!-- Upload mode -->
     <template v-if="isNew">
-      <a-upload accept=".pptx" :before-upload="(file:any) => { handleFileUpload(file); return false }"
-        :show-upload-list="false">
-        <a-button type="primary" size="large">选择 PPTX 文件上传</a-button>
-      </a-upload>
-      <p style="margin-top:8px;color:#888">仅支持 .pptx 格式，大小不超过 20MB</p>
+      <a-card class="upload-card" :bordered="false">
+        <div class="upload-body">
+          <div class="upload-icon">📄</div>
+          <h3 class="upload-title">上传 PPTX 课件</h3>
+          <p class="upload-hint">仅支持 .pptx 格式，大小不超过 20MB</p>
+          <a-upload
+            accept=".pptx"
+            :before-upload="(file: any) => { handleFileUpload(file); return false }"
+            :show-upload-list="false"
+          >
+            <a-button type="primary" size="large">选择 PPTX 文件上传</a-button>
+          </a-upload>
+        </div>
+      </a-card>
     </template>
 
     <!-- Editor mode -->
@@ -146,7 +155,7 @@ async function handleDelete() {
             <a-select-option v-for="v in voices" :key="v.id" :value="v.id">{{ v.name }}</a-select-option>
           </a-select>
           <a-tag v-if="s.status==='completed'" color="green" style="margin-left:8px">已合成</a-tag>
-          <a-tag v-else-if="s.status==='failed'" color="red" style="margin-left:8px">失败</a-tag>
+          <a-tag v-else-if="s.status==='failed'" color="red" style="margin-left:8px">合成失败</a-tag>
           <a-tag v-else color="default" style="margin-left:8px">待合成</a-tag>
         </a-card>
       </div>
@@ -156,3 +165,30 @@ async function handleDelete() {
     <a-empty v-else description="此课件暂无内容" />
   </a-spin>
 </template>
+
+<style scoped>
+.upload-card {
+  max-width: 560px;
+  border-radius: 16px;
+  background: #fff;
+}
+.upload-body {
+  text-align: center;
+  padding: 32px 16px;
+}
+.upload-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+.upload-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: #424242;
+}
+.upload-hint {
+  color: #757575;
+  font-size: 13px;
+  margin: 0 0 20px;
+}
+</style>
