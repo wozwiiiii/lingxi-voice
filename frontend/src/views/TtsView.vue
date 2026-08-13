@@ -73,6 +73,7 @@ onMounted(loadVoices);
 </script>
 
 <template>
+  <h1 class="page-title">文本转语音</h1>
   <a-row :gutter="24">
     <!-- 左侧：输入面板 -->
     <a-col :xs="24" :lg="12">
@@ -127,7 +128,7 @@ onMounted(loadVoices);
                 :description="`${item.voiceName} · ${item.time}`"
               />
               <template #actions>
-                <a @click="replayAudio(item)">播放</a>
+                <a-button type="link" size="small" @click="replayAudio(item)">播放</a-button>
               </template>
             </a-list-item>
           </template>
@@ -136,7 +137,7 @@ onMounted(loadVoices);
     </a-col>
 
     <!-- 右侧：预览 -->
-    <a-col :xs="24" :lg="12">
+    <a-col :xs="24" :lg="12" class="preview-col">
       <a-card class="panel" :bordered="false">
         <h3 class="panel-title">音频预览</h3>
         <audio
@@ -155,6 +156,12 @@ onMounted(loadVoices);
 </template>
 
 <style scoped>
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 16px;
+  color: #424242;
+}
 .panel {
   background: #fff;
   border-radius: 12px;
@@ -165,5 +172,10 @@ onMounted(loadVoices);
   font-weight: 600;
   margin: 0 0 12px;
   color: #424242;
+}
+@media (max-width: 991px) {
+  .preview-col {
+    order: -1;
+  }
 }
 </style>
