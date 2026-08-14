@@ -110,7 +110,7 @@ function onBreakpoint(broken: boolean) {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  border-bottom: 1px solid #f0e9e3;
+  border-bottom: 1px solid var(--lx-border);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -119,7 +119,7 @@ function onBreakpoint(broken: boolean) {
   height: 36px;
   flex-shrink: 0;
   border-radius: 10px;
-  background: linear-gradient(135deg, #ff8a4c 0%, #ff6b35 50%, #e85d2a 100%);
+  background: var(--lx-gradient-brand);
   color: #fff;
   font-size: 18px;
   font-weight: 700;
@@ -131,7 +131,7 @@ function onBreakpoint(broken: boolean) {
 .logo-text {
   font-size: 18px;
   font-weight: 700;
-  color: #2b2724;
+  color: var(--lx-text);
 }
 .header {
   padding: 0 16px;
@@ -145,22 +145,22 @@ function onBreakpoint(broken: boolean) {
   background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid #f0e9e3;
+  border-bottom: 1px solid var(--lx-border);
 }
 .trigger {
   font-size: 18px;
-  color: #6b6460;
+  color: var(--lx-text-secondary);
 }
 .header-right {
   display: flex;
   align-items: center;
 }
 .avatar {
-  background: linear-gradient(135deg, #ff8a4c 0%, #ff6b35 100%);
+  background: var(--lx-gradient-brand);
 }
 .username {
   font-size: 14px;
-  color: #2b2724;
+  color: var(--lx-text);
 }
 .content {
   padding: 24px;

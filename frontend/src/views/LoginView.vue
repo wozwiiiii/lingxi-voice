@@ -65,13 +65,29 @@ async function handleSubmit() {
       </div>
 
       <a-form @submit.prevent="handleSubmit" layout="vertical">
-        <a-form-item v-if="mode === 'register'" label="用户名">
+        <a-form-item
+          v-if="mode === 'register'"
+          label="用户名"
+          name="username"
+          :rules="[{ required: true, message: '请输入用户名', trigger: 'blur' },
+                   { min: 3, message: '用户名至少 3 个字符', trigger: 'blur' }]"
+        >
           <a-input v-model:value="username" placeholder="请输入用户名" size="large" />
         </a-form-item>
-        <a-form-item label="邮箱">
+        <a-form-item
+          label="邮箱"
+          name="email"
+          :rules="[{ required: true, message: '请输入邮箱', trigger: 'blur' },
+                   { type: 'email', message: '邮箱格式不正确', trigger: 'blur' }]"
+        >
           <a-input v-model:value="email" type="email" placeholder="请输入邮箱" size="large" />
         </a-form-item>
-        <a-form-item label="密码">
+        <a-form-item
+          label="密码"
+          name="password"
+          :rules="[{ required: true, message: '请输入密码', trigger: 'blur' },
+                   ...(mode === 'register' ? [{ min: 8, message: '密码至少 8 位', trigger: 'blur' }] : [])]"
+        >
           <a-input-password v-model:value="password" placeholder="请输入密码" size="large" />
         </a-form-item>
         <a-button
@@ -112,7 +128,7 @@ async function handleSubmit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #ff9a5a 0%, #ff6b35 45%, #e85d2a 100%);
+  background: var(--lx-gradient-hero);
   padding: 24px;
 }
 .login-card {
@@ -128,11 +144,11 @@ async function handleSubmit() {
 .login-title {
   font-size: 24px;
   font-weight: 700;
-  color: #ff6b35;
+  color: var(--lx-primary);
   margin: 0 0 4px;
 }
 .login-subtitle {
-  color: #6b6460;
+  color: var(--lx-text-secondary);
   margin: 0;
 }
 .login-footer {

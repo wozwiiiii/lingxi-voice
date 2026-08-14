@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
+import { message, Modal } from "ant-design-vue";
 import { listCourseware, type CoursewareProject } from "../api/courseware";
 import apiClient from "../api/client";
 import {
@@ -44,12 +45,23 @@ async function load() {
   } finally { loading.value = false; }
 }
 
-async function deleteMy(id: string, title: string) {
-  if (!confirm(`确定删除"${title}"？此操作不可恢复。`)) return;
-  try {
-    await apiClient.delete(`/courseware/${id}`);
-    myProjects.value = myProjects.value.filter(p => p.id !== id);
-  } catch (e: any) { alert(e.response?.data?.detail || "删除失败"); }
+function deleteMy(id: string, title: string) {
+  Modal.confirm({
+    title: "删除课件",
+    content: `确定删除"${title}"？此操作不可恢复。`,
+    okText: "删除",
+    okType: "danger",
+    cancelText: "取消",
+    onOk: async () => {
+      try {
+        await apiClient.delete(`/courseware/${id}`);
+        myProjects.value = myProjects.value.filter(p => p.id !== id);
+        message.success("已删除");
+      } catch (e: any) {
+        message.error(e.response?.data?.detail || "删除失败");
+      }
+    },
+  });
 }
 
 onMounted(load);
@@ -163,7 +175,7 @@ onMounted(load);
   font-size: 24px;
   font-weight: 700;
   margin: 0;
-  color: #2b2724;
+  color: var(--lx-text);
 }
 .section-head {
   display: flex;
@@ -175,7 +187,7 @@ onMounted(load);
   font-size: 16px;
   font-weight: 600;
   margin: 0;
-  color: #2b2724;
+  color: var(--lx-text);
 }
 /* 橙色计数徽章 */
 .count-badge {
@@ -183,7 +195,7 @@ onMounted(load);
   height: 20px;
   padding: 0 6px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #ff8a4c 0%, #ff6b35 100%);
+  background: var(--lx-gradient-brand);
   color: #fff;
   font-size: 12px;
   font-weight: 600;
@@ -198,7 +210,7 @@ onMounted(load);
 }
 .preset-card:focus-visible,
 .my-card:focus-visible {
-  outline: 2px solid #ff6b35;
+  outline: 2px solid var(--lx-primary);
   outline-offset: 2px;
 }
 /* 卡片顶部品牌渐变封面条：官方浅 / 我的深 */
@@ -208,10 +220,10 @@ onMounted(load);
   margin: -1px -1px 0;
 }
 .cover-preset {
-  background: linear-gradient(135deg, #ffe8d9 0%, #ffd6bc 100%);
+  background: var(--lx-gradient-chip);
 }
 .cover-my {
-  background: linear-gradient(135deg, #ff8a4c 0%, #ff6b35 50%, #e85d2a 100%);
+  background: var(--lx-gradient-brand);
 }
 .card-grid > :deep(.ant-empty) {
   grid-column: 1 / -1;
@@ -233,10 +245,10 @@ onMounted(load);
   font-size: 16px;
   font-weight: 600;
   margin: 0;
-  color: #2b2724;
+  color: var(--lx-text);
 }
 .card-desc {
-  color: #6b6460;
+  color: var(--lx-text-secondary);
   font-size: 13px;
   margin: 0;
   flex: 1;
@@ -245,9 +257,9 @@ onMounted(load);
 .empty-guide {
   grid-column: 1 / -1;
   min-height: 160px;
-  border: 1.5px dashed #e3d8cf;
+  border: 1.5px dashed var(--lx-border-strong);
   border-radius: 12px;
-  background: #fff7f2;
+  background: var(--lx-surface);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -258,10 +270,10 @@ onMounted(load);
 }
 .empty-icon {
   font-size: 36px;
-  color: #ffb26b;
+  color: var(--lx-accent);
 }
 .empty-text {
-  color: #6b6460;
+  color: var(--lx-text-secondary);
   font-size: 14px;
   margin: 0;
 }

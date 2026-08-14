@@ -10,6 +10,7 @@
   --lx-bg: #faf8f6;
   --lx-surface: #fff7f2;
   --lx-border: #f0e9e3;
+  --lx-border-strong: #e3d8cf;
   --lx-text: #2b2724;
   --lx-text-secondary: #6b6460;
   --lx-gradient-brand: linear-gradient(135deg, #ff8a4c 0%, #ff6b35 50%, #e85d2a 100%);
@@ -84,4 +85,24 @@ body {
     opacity: 1 !important;
     transform: none !important;
   }
+}
+
+/* 页面标题（全局统一，避免各视图重复定义） */
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 16px;
+  color: var(--lx-text);
+}
+
+/* 空状态定制：替代默认灰色 a-empty，融入暖色主题 */
+.lx-empty .ant-empty-description {
+  color: var(--lx-text-secondary);
+}
+.lx-empty .ant-empty-image {
+  opacity: 0.8;
+}
+.lx-empty .ant-empty-image svg,
+.lx-empty .ant-empty-image img {
+  filter: grayscale(0.2);
 }

@@ -101,7 +101,7 @@ const features = [
 .hero {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #ff9a5a 0%, #ff6b35 45%, #e85d2a 100%);
+  background: var(--lx-gradient-hero);
   border-radius: 16px;
   padding: 48px 40px;
   color: #fff;
@@ -146,12 +146,12 @@ const features = [
 }
 .hero-btn {
   background: #fff;
-  color: #c94f1f;
+  color: var(--lx-primary-active);
   border: none;
   font-weight: 500;
 }
 .hero-btn:hover {
-  color: #e85d2a;
+  color: var(--lx-primary-hover);
   border: none;
 }
 /* 幽灵按钮：半透明玻璃质感，用于次要 CTA */
@@ -181,8 +181,8 @@ const features = [
   height: 56px;
   margin: 0 auto 12px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #ffe8d9 0%, #ffd6bc 100%);
-  color: #e85d2a;
+  background: var(--lx-gradient-chip);
+  color: var(--lx-primary-hover);
   font-size: 24px;
   display: flex;
   align-items: center;
@@ -192,16 +192,16 @@ const features = [
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 8px;
-  color: #2b2724;
+  color: var(--lx-text);
 }
 .feature-desc {
-  color: #6b6460;
+  color: var(--lx-text-secondary);
   font-size: 14px;
   line-height: 1.6;
   margin: 0;
 }
 .feature-card:focus-visible {
-  outline: 2px solid #ff6b35;
+  outline: 2px solid var(--lx-primary);
   outline-offset: 2px;
 }
 </style>
