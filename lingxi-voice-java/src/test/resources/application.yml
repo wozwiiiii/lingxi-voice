@@ -11,8 +11,23 @@ spring:
   sql:
     init:
       mode: never
+  jackson:
+    property-naming-strategy: SNAKE_CASE
 
 jwt:
   secret: test-secret-key-that-is-at-least-32-chars-long
   access-token-expiration: 30m
   refresh-token-expiration: 7d
+
+tts:
+  provider: cloud:siliconflow
+  local:
+    inference-url: http://localhost:8001
+  siliconflow:
+    api-key: test-api-key
+    base-url: https://api.siliconflow.cn/v1
+
+langchain4j:
+  openai:
+    api-key: test
+    base-url: https://api.deepseek.com

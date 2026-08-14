@@ -86,7 +86,8 @@ class UserRepositoryTest {
         @DisplayName("should persist user and assign UUID")
         void persistsUserWithUuid() {
             User user = new User("save@example.com", "saver", "hash");
-            User saved = userRepo.save(user);
+            // saveAndFlush so @CreationTimestamp is populated by the flush
+            User saved = userRepo.saveAndFlush(user);
 
             assertThat(saved.getId()).isNotNull();
             assertThat(saved.getCreatedAt()).isNotNull();

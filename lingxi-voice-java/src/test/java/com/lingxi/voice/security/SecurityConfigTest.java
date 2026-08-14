@@ -51,10 +51,43 @@ class SecurityConfigTest {
         @Test
         @DisplayName("POST /api/auth/login should be accessible without auth")
         void loginIsPublic() throws Exception {
+            mockMvc.perform(post("/api/auth/register")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"email":"login@example.com","username":"loginuser","password":"password123"}"""))
+                .andExpect(status().isCreated());
+
             mockMvc.perform(post("/api/auth/login")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""
-                        {"email":"test@example.com","password":"password123"}"""))
+                        {"email":"login@example.com","password":"password123"}"""))
+                .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("POST /api/auth/refresh should be accessible without auth")
+        void refreshIsPublic() throws Exception {
+            mockMvc.perform(post("/api/auth/refresh")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"refresh_token":"some-refresh-token"}"""))
+                .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("GET /api/voices should be accessible without auth (visitor support)")
+        void voicesIsPublic() throws Exception {
+            mockMvc.perform(get("/api/voices"))
+                .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("POST /api/tts/synthesize should be accessible without auth (visitor support)")
+        void ttsSynthesizeIsPublic() throws Exception {
+            mockMvc.perform(post("/api/tts/synthesize")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"text":"hello","voice_id":"v1","speed":1.0}"""))
                 .andExpect(status().isOk());
         }
     }
@@ -64,12 +97,9 @@ class SecurityConfigTest {
     class ProtectedEndpoints {
 
         @Test
-        @DisplayName("GET /api/tts/synthesize should return 401 without auth")
-        void ttsSynthesizeRequiresAuth() throws Exception {
-            mockMvc.perform(post("/api/tts/synthesize")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""
-                        {"text":"hello","voiceId":"v1","speed":100}"""))
+        @DisplayName("GET /api/courseware/projects should return 401 without auth")
+        void coursewareRequiresAuth() throws Exception {
+            mockMvc.perform(get("/api/courseware/projects"))
                 .andExpect(status().isUnauthorized());
         }
     }

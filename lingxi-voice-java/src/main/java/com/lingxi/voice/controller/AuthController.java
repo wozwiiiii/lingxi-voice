@@ -7,7 +7,6 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -33,12 +32,34 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(req));
     }
 
+    @PostMapping("/refresh")
+    public ResponseEntity<TokenResponse> refresh(@Valid @RequestBody RefreshRequest req) {
+        return ResponseEntity.ok(authService.refreshAccess(req.refreshToken()));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        // Contract: endpoint MUST exist and return 204 so the frontend logout flow does not
+        // get a 404. Production should blacklist the access token's jti here — the Java version
+        // has no blacklist infrastructure yet, so this is intentionally a no-op returning 204.
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/me")
-    public ResponseEntity<UserResponse> me(@AuthenticationPrincipal User principal) {
-        if (principal == null) {
+    public ResponseEntity<UserResponse> me(@AuthenticationPrincipal Object principal) {
+        // JwtAuthenticationFilter sets the principal to the token subject (a UUID string).
+        // Anonymous/anonymous-with-invalid-subject must yield 401, not 400/404.
+        if (!(principal instanceof String userId)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        return userRepo.findById(UUID.fromString(principal.getUsername()))
+        UUID id;
+        try {
+            id = UUID.fromString(userId);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return userRepo.findById(id)
             .map(u -> ResponseEntity.ok(
                 new UserResponse(u.getId().toString(), u.getEmail(), u.getUsername(), u.getRole())))
             .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).build());

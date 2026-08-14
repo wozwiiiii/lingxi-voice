@@ -25,9 +25,9 @@ class SynthesisParamsTest {
     class FromTtsRequest {
 
         @Test
-        @DisplayName("should convert speed from percentage to multiplier (100 -> 1.0)")
-        void convertsSpeedPercentage() {
-            TtsRequest req = new TtsRequest("hello", "voice-1", 150, null, null, null, null);
+        @DisplayName("should pass speed through as multiplier (1.5 -> 1.5)")
+        void passesThroughSpeedMultiplier() {
+            TtsRequest req = new TtsRequest("hello", "voice-1", 1.5, null, null, null, null);
             SynthesisParams p = SynthesisParams.from(req);
             assertThat(p.speed()).isEqualTo(1.5);
         }
@@ -35,7 +35,7 @@ class SynthesisParamsTest {
         @Test
         @DisplayName("should pass through language, emotion, style, instruction")
         void passesThroughOptionalFields() {
-            TtsRequest req = new TtsRequest("hello", "voice-1", 100,
+            TtsRequest req = new TtsRequest("hello", "voice-1", 1.0,
                 "高兴", "新闻播报", "en", "speak slowly",
                 "mp3");
 

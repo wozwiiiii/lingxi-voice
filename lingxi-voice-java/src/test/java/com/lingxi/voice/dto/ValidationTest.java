@@ -58,7 +58,7 @@ class ValidationTest {
 
     @Test
     void shouldRejectBlankTtsText() {
-        TtsRequest req = new TtsRequest("", "voice_id", 100, null, null, "zh", null);
+        TtsRequest req = new TtsRequest("", "voice_id", 1.0, null, null, "zh", null);
         Set<ConstraintViolation<TtsRequest>> violations = validator.validate(req);
         assertThat(violations).isNotEmpty();
     }
@@ -66,14 +66,14 @@ class ValidationTest {
     @Test
     void shouldRejectOversizedText() {
         String huge = "x".repeat(2001);
-        TtsRequest req = new TtsRequest(huge, "voice_id", 100, null, null, "zh", null);
+        TtsRequest req = new TtsRequest(huge, "voice_id", 1.0, null, null, "zh", null);
         Set<ConstraintViolation<TtsRequest>> violations = validator.validate(req);
         assertThat(violations).isNotEmpty();
     }
 
     @Test
     void shouldAcceptValidTtsRequest() {
-        TtsRequest req = new TtsRequest("测试文本", "voice_id", 100, null, null, "zh", null);
+        TtsRequest req = new TtsRequest("测试文本", "voice_id", 1.0, null, null, "zh", null);
         Set<ConstraintViolation<TtsRequest>> violations = validator.validate(req);
         assertThat(violations).isEmpty();
     }

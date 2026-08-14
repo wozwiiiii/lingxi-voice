@@ -43,18 +43,82 @@ class AuthIntegrationTest {
                     .content("""
                         {"email":"flow@example.com","password":"password123"}"""))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").exists())
-                .andExpect(jsonPath("$.refreshToken").exists())
-                .andExpect(jsonPath("$.tokenType").value("bearer"))
+                .andExpect(jsonPath("$.access_token").exists())
+                .andExpect(jsonPath("$.refresh_token").exists())
+                .andExpect(jsonPath("$.token_type").value("bearer"))
                 .andReturn();
 
             String accessToken = com.jayway.jsonpath.JsonPath
-                .read(loginResult.getResponse().getContentAsString(), "$.accessToken");
+                .read(loginResult.getResponse().getContentAsString(), "$.access_token");
 
-            // Step 3: Access protected endpoint with JWT
-            mockMvc.perform(get("/api/voices")
+            // Step 3: Fetch profile with JWT
+            mockMvc.perform(get("/api/auth/me")
                     .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("flow@example.com"))
+                .andExpect(jsonPath("$.username").value("flowuser"));
+        }
+
+        @Test
+        @DisplayName("should refresh tokens with a valid refresh token")
+        void refreshesTokens() throws Exception {
+            mockMvc.perform(post("/api/auth/register")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"email":"refresh@example.com","username":"refreshuser","password":"password123"}"""))
+                .andExpect(status().isCreated());
+
+            MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"email":"refresh@example.com","password":"password123"}"""))
+                .andExpect(status().isOk())
+                .andReturn();
+
+            String refreshToken = com.jayway.jsonpath.JsonPath
+                .read(loginResult.getResponse().getContentAsString(), "$.refresh_token");
+
+            mockMvc.perform(post("/api/auth/refresh")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"refresh_token\":\"" + refreshToken + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.access_token").exists())
+                .andExpect(jsonPath("$.refresh_token").exists())
+                .andExpect(jsonPath("$.token_type").value("bearer"));
+        }
+
+        @Test
+        @DisplayName("should reject refresh with a bogus token (401)")
+        void rejectsBogusRefresh() throws Exception {
+            mockMvc.perform(post("/api/auth/refresh")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"refresh_token":"not-a-real-token"}"""))
+                .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("should return 204 on logout with a valid access token")
+        void logoutReturns204() throws Exception {
+            mockMvc.perform(post("/api/auth/register")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"email":"logout@example.com","username":"logoutuser","password":"password123"}"""))
+                .andExpect(status().isCreated());
+
+            MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"email":"logout@example.com","password":"password123"}"""))
+                .andExpect(status().isOk())
+                .andReturn();
+
+            String accessToken = com.jayway.jsonpath.JsonPath
+                .read(loginResult.getResponse().getContentAsString(), "$.access_token");
+
+            mockMvc.perform(post("/api/auth/logout")
+                    .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNoContent());
         }
 
         @Test
@@ -99,16 +163,33 @@ class AuthIntegrationTest {
         @Test
         @DisplayName("should reject protected endpoint without Authorization header")
         void rejectsProtectedEndpointWithoutAuth() throws Exception {
-            mockMvc.perform(get("/api/voices"))
+            mockMvc.perform(get("/api/courseware/projects"))
                 .andExpect(status().isUnauthorized());
         }
 
         @Test
         @DisplayName("should reject protected endpoint with malformed token")
         void rejectsMalformedToken() throws Exception {
-            mockMvc.perform(get("/api/voices")
+            mockMvc.perform(get("/api/courseware/projects")
                     .header("Authorization", "Bearer not-a-real-jwt"))
                 .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("should allow anonymous access to /api/voices")
+        void voicesIsPublic() throws Exception {
+            mockMvc.perform(get("/api/voices"))
+                .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("should allow anonymous access to /api/tts/synthesize")
+        void ttsIsPublic() throws Exception {
+            mockMvc.perform(post("/api/tts/synthesize")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"text":"hello","voice_id":"v1","speed":1.0}"""))
+                .andExpect(status().isOk());
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.lingxi.voice.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -29,10 +30,20 @@ public class SecurityConfig {
                 sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**", "/api/health",
-                                 "/api/capabilities").permitAll()
-                .requestMatchers("/api/tts/**").authenticated()
+                                 "/api/capabilities",
+                                 "/api/tts/**", "/api/voices").permitAll()
                 .anyRequest().authenticated()
             )
+            // Return 401 (not Spring's default 403) for unauthenticated requests to protected
+            // endpoints — matches the Python backend and lets the frontend trigger its
+            // refresh-on-401 flow.
+            .exceptionHandling(eh -> eh.authenticationEntryPoint(
+                (request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write(
+                        "{\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"Authentication required\"}}");
+                }))
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
             .build();
     }

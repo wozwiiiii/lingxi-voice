@@ -58,4 +58,5 @@ public class User {
     public void setRole(String role) { this.role = role; }
     public void setActive(boolean active) { isActive = active; }
     public Map<String, Object> getQuotaOverride() { return quotaOverride; }
+    public Instant getCreatedAt() { return createdAt; }
 }

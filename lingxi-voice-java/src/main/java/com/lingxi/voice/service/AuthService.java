@@ -4,10 +4,13 @@ import com.lingxi.voice.dto.*;
 import com.lingxi.voice.entity.User;
 import com.lingxi.voice.repository.UserRepository;
 import com.lingxi.voice.security.JwtTokenProvider;
+import io.jsonwebtoken.Claims;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.util.UUID;
 
 @Service
 @org.springframework.transaction.annotation.Transactional
@@ -41,5 +44,19 @@ public class AuthService {
         String access = jwt.createAccessToken(user.getId());
         String refresh = jwt.createRefreshToken(user.getId());
         return new TokenResponse(access, refresh);
+    }
+
+    public TokenResponse refreshAccess(String refreshToken) {
+        Claims claims = jwt.validateToken(refreshToken);
+        if (!"refresh".equals(claims.get("type"))) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
+        }
+        var user = userRepo.findById(UUID.fromString(claims.getSubject()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                "Invalid refresh token"));
+        // Rotate the refresh token on use (matches Python behavior).
+        String access = jwt.createAccessToken(user.getId());
+        String newRefresh = jwt.createRefreshToken(user.getId());
+        return new TokenResponse(access, newRefresh);
     }
 }

@@ -118,6 +118,8 @@ class RateLimitFilterTest {
             when(req1.getRemoteAddr()).thenReturn("10.0.0.1");
             when(req2.getRequestURI()).thenReturn("/api/tts/synthesize");
             when(req2.getRemoteAddr()).thenReturn("10.0.0.2");
+            // res1 gets exhausted -> 429 body is written; res2 is never rate-limited so no stub needed.
+            when(res1.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
 
             // Exhaust IP 10.0.0.1's bucket
             for (int i = 0; i < 31; i++) {

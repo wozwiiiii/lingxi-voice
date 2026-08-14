@@ -101,10 +101,10 @@ class JwtTokenProviderTest {
         }
 
         @Test
-        @DisplayName("should throw JwtException for an empty string")
+        @DisplayName("should reject an empty string (jjwt throws IllegalArgumentException)")
         void rejectsEmptyString() {
             assertThatThrownBy(() -> provider.validateToken(""))
-                .isInstanceOf(JwtException.class);
+                .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test

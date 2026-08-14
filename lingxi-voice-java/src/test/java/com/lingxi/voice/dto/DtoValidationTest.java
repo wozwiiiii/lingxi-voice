@@ -101,13 +101,13 @@ class DtoValidationTest {
         }
 
         @Test
-        @DisplayName("IMPORTANT: does NOT enforce minimum password length on login")
-        void doesNotEnforceMinPasswordLength() {
-            // LoginRequest has @NotBlank but no @Size — this documents the current behavior.
-            // A password of length 1 with @NotBlank passes validation.
+        @DisplayName("enforces minimum password length on login (mirrors register)")
+        void enforcesMinPasswordLength() {
+            // LoginRequest has @Size(min = 8) — stricter than Python's LoginRequest (which only
+            // requires non-blank). This is intentional and documented by the contract audit.
             LoginRequest req = new LoginRequest("a@b.com", "1");
             Set<ConstraintViolation<LoginRequest>> violations = validator.validate(req);
-            assertThat(violations).isEmpty();
+            assertThat(violations).isNotEmpty();
         }
     }
 
@@ -118,7 +118,7 @@ class DtoValidationTest {
         @Test
         @DisplayName("should pass with valid data")
         void validDataPasses() {
-            TtsRequest req = new TtsRequest("hello", "v1", 100, null, null, null, null);
+            TtsRequest req = new TtsRequest("hello", "v1", 1.0, null, null, null, null);
             Set<ConstraintViolation<TtsRequest>> violations = validator.validate(req);
             assertThat(violations).isEmpty();
         }
@@ -126,7 +126,7 @@ class DtoValidationTest {
         @Test
         @DisplayName("should reject blank text")
         void rejectsBlankText() {
-            TtsRequest req = new TtsRequest("  ", "v1", 100, null, null, null, null);
+            TtsRequest req = new TtsRequest("  ", "v1", 1.0, null, null, null, null);
             assertThat(validator.validate(req)).isNotEmpty();
         }
 
@@ -134,22 +134,22 @@ class DtoValidationTest {
         @DisplayName("should reject text exceeding 2000 characters")
         void rejectsTooLongText() {
             String longText = "a".repeat(2001);
-            TtsRequest req = new TtsRequest(longText, "v1", 100, null, null, null, null);
+            TtsRequest req = new TtsRequest(longText, "v1", 1.0, null, null, null, null);
             assertThat(validator.validate(req)).isNotEmpty();
         }
 
         @Test
-        @DisplayName("should reject speed below 50")
-        void rejectsSpeedBelow50() {
-            TtsRequest req = new TtsRequest("hello", "v1", 49, null, null, null, null);
+        @DisplayName("should reject speed below 0.5")
+        void rejectsSpeedBelow0_5() {
+            TtsRequest req = new TtsRequest("hello", "v1", 0.4, null, null, null, null);
             Set<ConstraintViolation<TtsRequest>> violations = validator.validate(req);
             assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("speed"));
         }
 
         @Test
-        @DisplayName("should reject speed above 300")
-        void rejectsSpeedAbove300() {
-            TtsRequest req = new TtsRequest("hello", "v1", 301, null, null, null, null);
+        @DisplayName("should reject speed above 3.0")
+        void rejectsSpeedAbove3_0() {
+            TtsRequest req = new TtsRequest("hello", "v1", 3.1, null, null, null, null);
             Set<ConstraintViolation<TtsRequest>> violations = validator.validate(req);
             assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("speed"));
         }
@@ -157,7 +157,7 @@ class DtoValidationTest {
         @Test
         @DisplayName("should reject blank voiceId")
         void rejectsBlankVoiceId() {
-            TtsRequest req = new TtsRequest("hello", "", 100, null, null, null, null);
+            TtsRequest req = new TtsRequest("hello", "", 1.0, null, null, null, null);
             assertThat(validator.validate(req)).isNotEmpty();
         }
     }

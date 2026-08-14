@@ -13,7 +13,7 @@ public record SynthesisParams(
 
     public static SynthesisParams from(com.lingxi.voice.dto.TtsRequest req) {
         return new SynthesisParams(
-            req.speed() / 100.0, 0.0, 1.0,
+            req.speed(), 0.0, 1.0,
             req.emotion(), req.style(), req.language(), req.instruction()
         );
     }
