@@ -3,6 +3,11 @@ import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { listCourseware, type CoursewareProject } from "../api/courseware";
 import apiClient from "../api/client";
+import {
+  BookOutlined,
+  FileTextOutlined,
+  PlusOutlined,
+} from "@ant-design/icons-vue";
 
 const router = useRouter();
 const presets = ref<CoursewareProject[]>([]);
@@ -59,7 +64,11 @@ onMounted(load);
       </a-button>
     </div>
 
-    <h2 class="section-title">官方示例</h2>
+    <!-- 官方示例：橙色计数徽章 + 卡片渐变封面条 -->
+    <div class="section-head">
+      <h2 class="section-title">官方示例</h2>
+      <span class="count-badge">{{ presets.length }}</span>
+    </div>
     <div class="card-grid">
       <a-card
         v-for="p in presets"
@@ -72,16 +81,25 @@ onMounted(load);
         @keydown.enter.prevent="router.push(`/courseware/${p.id}`)"
         @keydown.space.prevent="router.push(`/courseware/${p.id}`)"
       >
+        <div class="card-cover cover-preset" aria-hidden="true"></div>
         <div class="card-body">
           <h3 class="card-title">{{ p.title }}</h3>
           <p class="card-desc">{{ p.description || "暂无描述" }}</p>
           <a-tag color="orange">官方示例</a-tag>
         </div>
       </a-card>
-      <a-empty v-if="!presets.length" description="暂无官方示例" />
+      <!-- 空状态：米色虚线引导区 -->
+      <div v-if="!presets.length" class="empty-guide">
+        <BookOutlined class="empty-icon" />
+        <p class="empty-text">暂无官方示例</p>
+      </div>
     </div>
 
-    <h2 class="section-title" style="margin-top: 32px">我的课件</h2>
+    <!-- 我的课件 -->
+    <div class="section-head" style="margin-top: 32px">
+      <h2 class="section-title">我的课件</h2>
+      <span class="count-badge">{{ myProjects.length }}</span>
+    </div>
     <div class="card-grid">
       <a-card
         v-for="p in myProjects"
@@ -94,6 +112,7 @@ onMounted(load);
         @keydown.enter.prevent="router.push(`/courseware/${p.id}`)"
         @keydown.space.prevent="router.push(`/courseware/${p.id}`)"
       >
+        <div class="card-cover cover-my" aria-hidden="true"></div>
         <div class="card-body">
           <div class="card-title-row">
             <h3 class="card-title">{{ p.title }}</h3>
@@ -120,7 +139,15 @@ onMounted(load);
           </a-space>
         </div>
       </a-card>
-      <a-empty v-if="myProjects.length === 0" description="还没有创建课件" />
+      <!-- 空状态：米色虚线引导区 + 行动按钮 -->
+      <div v-if="myProjects.length === 0" class="empty-guide">
+        <FileTextOutlined class="empty-icon" />
+        <p class="empty-text">还没有创建课件</p>
+        <a-button type="primary" @click="router.push('/courseware/new')">
+          <template #icon><PlusOutlined /></template>
+          上传第一个课件
+        </a-button>
+      </div>
     </div>
   </a-spin>
 </template>
@@ -136,13 +163,33 @@ onMounted(load);
   font-size: 24px;
   font-weight: 700;
   margin: 0;
-  color: #424242;
+  color: #2b2724;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
 }
 .section-title {
   font-size: 16px;
   font-weight: 600;
-  margin: 0 0 16px;
-  color: #424242;
+  margin: 0;
+  color: #2b2724;
+}
+/* 橙色计数徽章 */
+.count-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ff8a4c 0%, #ff6b35 100%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  display: inline-block;
 }
 .card-grid {
   display: grid;
@@ -151,8 +198,20 @@ onMounted(load);
 }
 .preset-card:focus-visible,
 .my-card:focus-visible {
-  outline: 2px solid #ff7043;
+  outline: 2px solid #ff6b35;
   outline-offset: 2px;
+}
+/* 卡片顶部品牌渐变封面条：官方浅 / 我的深 */
+.card-cover {
+  height: 56px;
+  border-radius: 12px 12px 0 0;
+  margin: -1px -1px 0;
+}
+.cover-preset {
+  background: linear-gradient(135deg, #ffe8d9 0%, #ffd6bc 100%);
+}
+.cover-my {
+  background: linear-gradient(135deg, #ff8a4c 0%, #ff6b35 50%, #e85d2a 100%);
 }
 .card-grid > :deep(.ant-empty) {
   grid-column: 1 / -1;
@@ -162,6 +221,7 @@ onMounted(load);
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding-top: 8px;
 }
 .card-title-row {
   display: flex;
@@ -173,12 +233,36 @@ onMounted(load);
   font-size: 16px;
   font-weight: 600;
   margin: 0;
-  color: #424242;
+  color: #2b2724;
 }
 .card-desc {
-  color: #757575;
+  color: #6b6460;
   font-size: 13px;
   margin: 0;
   flex: 1;
+}
+/* 空状态：米色虚线引导区 */
+.empty-guide {
+  grid-column: 1 / -1;
+  min-height: 160px;
+  border: 1.5px dashed #e3d8cf;
+  border-radius: 12px;
+  background: #fff7f2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px;
+  text-align: center;
+}
+.empty-icon {
+  font-size: 36px;
+  color: #ffb26b;
+}
+.empty-text {
+  color: #6b6460;
+  font-size: 14px;
+  margin: 0;
 }
 </style>

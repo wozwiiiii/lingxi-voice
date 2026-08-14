@@ -112,14 +112,14 @@ async function handleSubmit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #e64a19 0%, #d84315 100%);
+  background: linear-gradient(135deg, #ff9a5a 0%, #ff6b35 45%, #e85d2a 100%);
   padding: 24px;
 }
 .login-card {
   width: 100%;
   max-width: 400px;
   border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 24px rgba(201, 79, 31, 0.18);
 }
 .login-header {
   text-align: center;
@@ -128,11 +128,11 @@ async function handleSubmit() {
 .login-title {
   font-size: 24px;
   font-weight: 700;
-  color: #ff7043;
+  color: #ff6b35;
   margin: 0 0 4px;
 }
 .login-subtitle {
-  color: #757575;
+  color: #6b6460;
   margin: 0;
 }
 .login-footer {

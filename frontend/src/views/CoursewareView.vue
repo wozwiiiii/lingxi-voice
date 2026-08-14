@@ -171,12 +171,12 @@ async function handleDelete() {
   font-size: 24px;
   font-weight: 700;
   margin: 0 0 16px;
-  color: #424242;
+  color: #2b2724;
 }
 .upload-card {
   max-width: 560px;
   border-radius: 16px;
-  background: #fff;
+  background: #fff7f2;
 }
 .upload-body {
   text-align: center;
@@ -190,10 +190,10 @@ async function handleDelete() {
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 8px;
-  color: #424242;
+  color: #2b2724;
 }
 .upload-hint {
-  color: #757575;
+  color: #6b6460;
   font-size: 13px;
   margin: 0 0 20px;
 }

@@ -54,9 +54,10 @@ function onBreakpoint(broken: boolean) {
       breakpoint="xl"
       @breakpoint="onBreakpoint"
     >
+      <!-- 品牌 Logo：渐变圆角方块「灵」字标 + 文字组合 -->
       <div class="logo">
-        <span v-if="!collapsed">灵犀语伴</span>
-        <span v-else>灵</span>
+        <div class="logo-mark" aria-hidden="true">灵</div>
+        <span v-if="!collapsed" class="logo-text">灵犀语伴</span>
       </div>
       <a-menu
         theme="light"
@@ -68,7 +69,7 @@ function onBreakpoint(broken: boolean) {
     </a-layout-sider>
 
     <a-layout>
-      <!-- 顶部栏 -->
+      <!-- 顶部栏：毛玻璃 + 细边框 -->
       <a-layout-header class="header">
         <a-button type="text" class="trigger" aria-label="收起/展开菜单" @click="collapsed = !collapsed">
           <MenuUnfoldOutlined v-if="collapsed" />
@@ -92,9 +93,11 @@ function onBreakpoint(broken: boolean) {
         </div>
       </a-layout-header>
 
-      <!-- 内容区 -->
+      <!-- 内容区：max-width 1280px 居中，大屏不再无限拉伸 -->
       <a-layout-content class="content">
-        <slot />
+        <div class="content-inner">
+          <slot />
+        </div>
       </a-layout-content>
     </a-layout>
   </a-layout>
@@ -106,39 +109,65 @@ function onBreakpoint(broken: boolean) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ff7043;
-  font-size: 20px;
-  font-weight: 700;
-  border-bottom: 1px solid #f0f0f0;
+  gap: 10px;
+  border-bottom: 1px solid #f0e9e3;
   white-space: nowrap;
   overflow: hidden;
 }
+.logo-mark {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ff8a4c 0%, #ff6b35 50%, #e85d2a 100%);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.28);
+}
+.logo-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2b2724;
+}
 .header {
-  background: #fff;
   padding: 0 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   position: sticky;
   top: 0;
   z-index: 10;
+  /* 毛玻璃效果：半透明底 + 背景模糊 + 细边框（替代生硬阴影） */
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid #f0e9e3;
 }
 .trigger {
   font-size: 18px;
+  color: #6b6460;
 }
 .header-right {
   display: flex;
   align-items: center;
 }
 .avatar {
-  background: #ff7043;
+  background: linear-gradient(135deg, #ff8a4c 0%, #ff6b35 100%);
 }
 .username {
   font-size: 14px;
-  color: #424242;
+  color: #2b2724;
 }
 .content {
   padding: 24px;
+}
+.content-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
 }
 </style>

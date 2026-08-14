@@ -160,10 +160,10 @@ onMounted(loadVoices);
   font-size: 24px;
   font-weight: 700;
   margin: 0 0 16px;
-  color: #424242;
+  color: #2b2724;
 }
 .panel {
-  background: #fff;
+  background: #fff7f2;
   border-radius: 12px;
   margin-bottom: 16px;
 }
@@ -171,7 +171,7 @@ onMounted(loadVoices);
   font-size: 16px;
   font-weight: 600;
   margin: 0 0 12px;
-  color: #424242;
+  color: #2b2724;
 }
 @media (max-width: 991px) {
   .preview-col {
