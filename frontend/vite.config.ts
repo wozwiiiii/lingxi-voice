@@ -7,7 +7,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://localhost:8000",
-      "/media": "http://127.0.0.1",
+      // /media 由 FastAPI StaticFiles 提供（见 backend/app/main.py），无需依赖本机 80 端口 nginx
+      "/media": "http://localhost:8000",
     },
   },
 });
