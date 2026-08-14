@@ -69,3 +69,28 @@ async def test_register_short_password(client: AsyncClient):
 async def test_access_without_token(client: AsyncClient):
     resp = await client.get("/api/auth/me")
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_refresh_rejects_disabled_user(client: AsyncClient, db_session):
+    """A disabled/deleted user must not be able to refresh tokens (#7)."""
+    await client.post("/api/auth/register", json={
+        "email": "disabled@test.com", "username": "disableduser", "password": "password123",
+    })
+    resp = await client.post("/api/auth/login", json={
+        "email": "disabled@test.com", "password": "password123",
+    })
+    assert resp.status_code == 200
+    refresh_token = resp.json()["refresh_token"]
+
+    from sqlalchemy import select
+
+    from app.models.user import User
+
+    result = await db_session.execute(select(User).where(User.email == "disabled@test.com"))
+    user = result.scalar_one()
+    user.is_active = False
+    await db_session.commit()
+
+    resp = await client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
+    assert resp.status_code == 401

@@ -2,6 +2,7 @@
 
 import fakeredis.aioredis
 import pytest
+from starlette.requests import Request
 
 from app.security.rate_limit import RateLimiter
 from app.utils import redis_client as redis_module
@@ -71,3 +72,84 @@ class TestRateLimiterOverride:
         # With override=10, we can make 9 calls (default max=5 would block)
         for i in range(9):
             await limiter.check("test:lenient", max_override=10)
+
+
+def _make_request(headers: dict | None = None, client=("10.0.0.2", 50000)) -> Request:
+    headers = headers or {}
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/test",
+        "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+        "client": client,
+        "query_string": b"",
+    }
+    return Request(scope)
+
+
+class TestClientIp:
+    def test_uses_first_forwarded_entry(self):
+        from app.main import _client_ip
+
+        req = _make_request({"X-Forwarded-For": "203.0.113.7, 10.0.0.2"})
+        assert _client_ip(req) == "203.0.113.7"
+
+    def test_falls_back_to_client_host(self):
+        from app.main import _client_ip
+
+        req = _make_request({})
+        assert _client_ip(req) == "10.0.0.2"
+
+    def test_ignores_blank_forwarded_header(self):
+        from app.main import _client_ip
+
+        req = _make_request({"X-Forwarded-For": ""})
+        assert _client_ip(req) == "10.0.0.2"
+
+
+class TestRateLimitMiddlewareKey:
+    @pytest.mark.asyncio
+    async def test_rate_key_uses_forwarded_ip(self, client):
+        """Behind nginx the middleware must key on the original client IP (#9)."""
+        from app.security import rate_limit as rl_module
+
+        captured = {}
+
+        class _FakeLimiter:
+            async def check(self, key, max_override=None):
+                captured["key"] = key
+
+        original = rl_module.rate_limiter
+        rl_module.rate_limiter = _FakeLimiter()
+        try:
+            resp = await client.get(
+                "/api/capabilities",
+                headers={"X-Forwarded-For": "203.0.113.7, 10.0.0.2"},
+            )
+        finally:
+            rl_module.rate_limiter = original
+
+        assert resp.status_code == 200
+        assert captured["key"] == "tts:rate:ip:203.0.113.7:1min"
+
+    @pytest.mark.asyncio
+    async def test_rate_key_falls_back_to_client_host(self, client):
+        """No forwarded header (direct dev access) keys on request.client.host."""
+        from app.security import rate_limit as rl_module
+
+        captured = {}
+
+        class _FakeLimiter:
+            async def check(self, key, max_override=None):
+                captured["key"] = key
+
+        original = rl_module.rate_limiter
+        rl_module.rate_limiter = _FakeLimiter()
+        try:
+            resp = await client.get("/api/capabilities")
+        finally:
+            rl_module.rate_limiter = original
+
+        assert resp.status_code == 200
+        # ASGITransport reports the client host as 127.0.0.1
+        assert captured["key"] == "tts:rate:ip:127.0.0.1:1min"

@@ -34,8 +34,8 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(data: RefreshRequest):
-    return await refresh_access_token(data.refresh_token)
+async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    return await refresh_access_token(db, data.refresh_token)
 
 
 @router.post("/logout", status_code=204)

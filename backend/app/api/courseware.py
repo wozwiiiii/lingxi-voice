@@ -35,12 +35,22 @@ router = APIRouter(prefix="/api/courseware", tags=["courseware"])
 
 def _check_ownership(project: CoursewareProject | None, user: User | None) -> None:
     """Raise 404 if project doesn't exist or user doesn't own it.
-    Public presets (user_id IS NULL) are accessible to everyone.
+    Public presets (user_id IS NULL) are accessible to everyone (read-only).
     Private projects require the owner or return 404 (prevents ID enumeration).
     """
     if not project:
         raise HTTPException(status_code=404)
     if project.user_id is not None and (user is None or project.user_id != user.id):
+        raise HTTPException(status_code=404)
+
+
+def _check_ownership_write(project: CoursewareProject | None, user: User | None) -> None:
+    """Raise 404 unless project exists AND belongs to the authenticated user.
+
+    Unlike read semantics, public presets (user_id IS NULL) can never be
+    modified, deleted, or synthesized by anyone (security #6).
+    """
+    if not project or user is None or project.user_id != user.id:
         raise HTTPException(status_code=404)
 
 
@@ -128,7 +138,7 @@ async def patch_slide(
     db: AsyncSession = Depends(get_db), user=Depends(get_current_user),
 ):
     project = await get_project(db, project_id)
-    _check_ownership(project, user)
+    _check_ownership_write(project, user)
     slide = await update_slide(
         db, project_id, slide_index, data.model_dump(exclude_none=True),
     )
@@ -143,7 +153,7 @@ async def patch_bulk_settings(
     db: AsyncSession = Depends(get_db), user=Depends(get_current_user),
 ):
     project = await get_project(db, project_id)
-    _check_ownership(project, user)
+    _check_ownership_write(project, user)
     await apply_bulk_settings(db, project_id, data.model_dump(exclude_none=True))
     return {"status": "ok"}
 
@@ -155,7 +165,7 @@ async def synthesize_courseware(
     user=Depends(get_current_user),
 ):
     project = await get_project(db, project_id)
-    _check_ownership(project, user)
+    _check_ownership_write(project, user)
     if project.status not in ("ready", "failed", "synthesizing"):
         raise HTTPException(
             status_code=409,
@@ -260,7 +270,7 @@ async def delete_courseware(
     user=Depends(get_current_user),
 ):
     project = await get_project(db, project_id)
-    _check_ownership(project, user)
+    _check_ownership_write(project, user)
 
     slides = await get_slides(db, project_id)
     for slide in slides:

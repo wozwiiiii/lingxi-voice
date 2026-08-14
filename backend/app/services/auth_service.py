@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import HTTPException, status
 from passlib.context import CryptContext
 from sqlalchemy import select
@@ -59,7 +61,7 @@ async def login_user(db: AsyncSession, data: LoginRequest) -> TokenResponse:
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
-async def refresh_access_token(refresh_token_str: str) -> TokenResponse:
+async def refresh_access_token(db: AsyncSession, refresh_token_str: str) -> TokenResponse:
     try:
         payload = decode_token(refresh_token_str)
     except Exception:
@@ -71,6 +73,21 @@ async def refresh_access_token(refresh_token_str: str) -> TokenResponse:
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong token type"
         )
 
+    # Re-check user state: banned/deleted users must not be able to refresh (#7)
+    try:
+        result = await db.execute(
+            select(User).where(User.id == uuid.UUID(payload["sub"]))
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+        )
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Account disabled"
+        )
+
     # Rotate refresh token: blacklist old one, issue new pair
     old_jti = payload.get("jti", "")
     if old_jti:
@@ -78,8 +95,8 @@ async def refresh_access_token(refresh_token_str: str) -> TokenResponse:
         remaining_ttl = max(0, int(payload.get("exp", 0) - __import__("time").time()))
         await redis.setex(f"jwt:blacklist:{old_jti}", remaining_ttl, "1")
 
-    access_token, _, _ = create_access_token(payload["sub"])
-    new_refresh_token, _, _ = create_refresh_token(payload["sub"])
+    access_token, _, _ = create_access_token(str(user.id))
+    new_refresh_token, _, _ = create_refresh_token(str(user.id))
     return TokenResponse(access_token=access_token, refresh_token=new_refresh_token)
 
 
