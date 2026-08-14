@@ -140,7 +140,7 @@ async def patch_slide(
     project = await get_project(db, project_id)
     _check_ownership_write(project, user)
     slide = await update_slide(
-        db, project_id, slide_index, data.model_dump(exclude_none=True),
+        db, project_id, slide_index, data.model_dump(exclude_unset=True),
     )
     if not slide:
         raise HTTPException(status_code=404, detail="Slide not found")
@@ -172,29 +172,29 @@ async def synthesize_courseware(
             detail=f"课件状态为 {project.status}，无法开始合成",
         )
 
+    previous_status = project.status
     project.status = "synthesizing"
-    await db.commit()  # Commit now so _synthesize's own session won't deadlock on this row
+    await db.commit()  # Commit so the Celery task's own session sees the new status
 
-    # Run synthesis synchronously
-    from app.tasks.courseware_tasks import _synthesize
+    # Submit to Celery instead of synthesizing synchronously in the request
+    from app.tasks.courseware_tasks import synthesize_courseware_task
     try:
-        await _synthesize(str(project.id))
+        synthesize_courseware_task.delay(str(project.id))
     except Exception as e:
+        # Task submission failed (e.g. broker down) — roll the status back
         result = await db.execute(
             select(CoursewareProject).where(CoursewareProject.id == uuid_mod.UUID(project_id))
         )
         project = result.scalar_one_or_none()
         if project:
-            project.status = "failed"
-            project.error_message = str(e)
+            project.status = previous_status
             await db.commit()
-        raise HTTPException(status_code=500, detail=f"合成失败: {e}")
+        raise HTTPException(status_code=500, detail=f"合成任务提交失败: {e}")
 
-    await db.refresh(project)
     return SynthesizeResponse(
         project_id=str(project.id),
-        status=project.status,
-        message="课件合成完成" if project.status == "completed" else f"课件合成结束，状态: {project.status}",
+        status="synthesizing",
+        message="合成任务已提交，请通过进度接口查看",
     )
 
 

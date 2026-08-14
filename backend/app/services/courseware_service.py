@@ -88,8 +88,12 @@ async def update_slide(
     slide = result.scalar_one_or_none()
     if not slide:
         return None
+    # Apply every key present in the payload, including explicit nulls, so
+    # fields (emotion/style/voice_id/...) can be cleared back to None.
+    # "Field absent" vs "field explicitly null" is distinguished upstream via
+    # exclude_unset=True (see patch_slide).
     for key, value in data.items():
-        if value is not None and hasattr(slide, key):
+        if hasattr(slide, key):
             setattr(slide, key, value)
     await db.flush()
     await db.refresh(slide)

@@ -1,5 +1,6 @@
 import pytest
 from httpx import AsyncClient
+from unittest.mock import MagicMock
 
 
 @pytest.mark.asyncio
@@ -89,3 +90,98 @@ async def test_preset_courseware_still_readable_without_auth(client: AsyncClient
     resp = await client.get(f"/api/courseware/{project.id}")
     assert resp.status_code == 200
     assert resp.json()["title"] == "Preset Demo"
+
+
+async def _create_owned_project(db_session, title="Owned Project"):
+    """Create a project owned by the auth fixture's user (cw_test@example.com)."""
+    from sqlalchemy import select
+    from app.models.courseware import CoursewareProject
+    from app.models.user import User
+
+    result = await db_session.execute(select(User).where(User.email == "cw_test@example.com"))
+    user = result.scalar_one()
+    project = CoursewareProject(user_id=user.id, title=title, status="ready")
+    db_session.add(project)
+    await db_session.commit()
+    return project
+
+
+@pytest.mark.asyncio
+async def test_patch_slide_clears_emotion_to_null(client: AsyncClient, auth_headers, db_session):
+    """An explicit null in the PATCH body must clear the field, not be stripped (#16)."""
+    from sqlalchemy import select
+    from app.models.courseware import CoursewareSlide
+
+    project = await _create_owned_project(db_session, "Null Clear Test")
+    slide = CoursewareSlide(project_id=project.id, slide_index=0, emotion="happy", style="gentle")
+    db_session.add(slide)
+    await db_session.commit()
+
+    resp = await client.patch(
+        f"/api/courseware/{project.id}/slides/0",
+        json={"emotion": None},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["emotion"] is None
+    assert data["style"] == "gentle"  # untouched field preserved
+
+    fresh = await db_session.execute(
+        select(CoursewareSlide).where(CoursewareSlide.id == slide.id)
+    )
+    assert fresh.scalar_one().emotion is None
+
+
+@pytest.mark.asyncio
+async def test_synthesize_submits_to_celery(client: AsyncClient, auth_headers, db_session, monkeypatch):
+    """Synthesize must submit to Celery and return immediately with status synthesizing (#15)."""
+    from sqlalchemy import select
+    from app.models.courseware import CoursewareProject
+    import app.tasks.courseware_tasks as cw_tasks
+
+    project = await _create_owned_project(db_session, "Async Submit Test")
+    project_id = str(project.id)
+
+    delay_mock = MagicMock()
+    task_mock = MagicMock()
+    task_mock.delay = delay_mock
+    monkeypatch.setattr(cw_tasks, "synthesize_courseware_task", task_mock)
+
+    resp = await client.post(f"/api/courseware/{project_id}/synthesize", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "synthesizing"
+    assert "进度" in data["message"]
+
+    delay_mock.assert_called_once_with(project_id)
+
+    fresh = await db_session.execute(
+        select(CoursewareProject).where(CoursewareProject.id == project.id)
+    )
+    assert fresh.scalar_one().status == "synthesizing"
+
+
+@pytest.mark.asyncio
+async def test_synthesize_submit_failure_resets_status(client: AsyncClient, auth_headers, db_session, monkeypatch):
+    """If Celery submission fails (e.g. broker down), reset status and return 500 (#15)."""
+    from sqlalchemy import select
+    from app.models.courseware import CoursewareProject
+    import app.tasks.courseware_tasks as cw_tasks
+
+    project = await _create_owned_project(db_session, "Broker Down Test")
+    project_id = str(project.id)
+
+    delay_mock = MagicMock(side_effect=Exception("broker unreachable"))
+    task_mock = MagicMock()
+    task_mock.delay = delay_mock
+    monkeypatch.setattr(cw_tasks, "synthesize_courseware_task", task_mock)
+
+    resp = await client.post(f"/api/courseware/{project_id}/synthesize", headers=auth_headers)
+    assert resp.status_code == 500
+    assert "提交失败" in resp.json()["detail"]
+
+    fresh = await db_session.execute(
+        select(CoursewareProject).where(CoursewareProject.id == project.id)
+    )
+    assert fresh.scalar_one().status == "ready"
