@@ -1,0 +1,16 @@
+# 前端多阶段构建：node 构建 → nginx 托管静态产物
+# 构建出的镜像只包含前端 dist，由 compose 中的 nginx 服务挂载/引用
+
+# ---- Stage 1: build ----
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
+
+# ---- Stage 2: serve ----
+FROM nginx:alpine
+# 复制构建产物到 nginx 默认静态目录；nginx.conf 由 compose 挂载覆盖
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
