@@ -182,6 +182,10 @@ async def synthesize_courseware(
         synthesize_courseware_task.delay(str(project.id))
     except Exception as e:
         # Task submission failed (e.g. broker down) — roll the status back
+        # 只记录日志，不把内部异常原文返回客户端（避免泄露内部路径/依赖信息）
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Synthesis task submission failed for {project_id}: {e}")
         result = await db.execute(
             select(CoursewareProject).where(CoursewareProject.id == uuid_mod.UUID(project_id))
         )
@@ -189,7 +193,7 @@ async def synthesize_courseware(
         if project:
             project.status = previous_status
             await db.commit()
-        raise HTTPException(status_code=500, detail=f"合成任务提交失败: {e}")
+        raise HTTPException(status_code=500, detail="合成任务提交失败，请稍后重试")
 
     return SynthesizeResponse(
         project_id=str(project.id),

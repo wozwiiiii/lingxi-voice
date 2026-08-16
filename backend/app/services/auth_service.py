@@ -73,6 +73,15 @@ async def refresh_access_token(db: AsyncSession, refresh_token_str: str) -> Toke
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong token type"
         )
 
+    # Reject revoked refresh tokens (logout or prior rotation) (#8)
+    jti = payload.get("jti", "")
+    if jti:
+        redis = await get_redis()
+        if await redis.get(f"jwt:blacklist:{jti}"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token revoked"
+            )
+
     # Re-check user state: banned/deleted users must not be able to refresh (#7)
     try:
         result = await db.execute(
@@ -89,11 +98,10 @@ async def refresh_access_token(db: AsyncSession, refresh_token_str: str) -> Toke
         )
 
     # Rotate refresh token: blacklist old one, issue new pair
-    old_jti = payload.get("jti", "")
-    if old_jti:
+    if jti:
         redis = await get_redis()
         remaining_ttl = max(0, int(payload.get("exp", 0) - __import__("time").time()))
-        await redis.setex(f"jwt:blacklist:{old_jti}", remaining_ttl, "1")
+        await redis.setex(f"jwt:blacklist:{jti}", remaining_ttl, "1")
 
     access_token, _, _ = create_access_token(str(user.id))
     new_refresh_token, _, _ = create_refresh_token(str(user.id))
@@ -101,8 +109,32 @@ async def refresh_access_token(db: AsyncSession, refresh_token_str: str) -> Toke
 
 
 async def logout_user(access_jti: str) -> None:
+    """Blacklist an access token's jti until its natural expiry."""
     from app.config import settings
 
     redis = await get_redis()
     ttl = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     await redis.setex(f"jwt:blacklist:{access_jti}", ttl, "1")
+
+
+async def logout_refresh_token(refresh_token_str: str) -> None:
+    """Blacklist a refresh token's jti so it can no longer be used to refresh.
+
+    Without this, a leaked refresh token stays valid for up to 7 days after logout.
+    """
+    try:
+        payload = decode_token(refresh_token_str)
+    except Exception:
+        return  # Invalid/expired token — nothing to blacklist; logout still effective
+    if payload.get("type") != "refresh":
+        return
+    jti = payload.get("jti", "")
+    if not jti:
+        return
+    import time
+
+    remaining_ttl = max(0, int(payload.get("exp", 0) - time.time()))
+    if remaining_ttl <= 0:
+        return
+    redis = await get_redis()
+    await redis.setex(f"jwt:blacklist:{jti}", remaining_ttl, "1")

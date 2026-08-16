@@ -94,3 +94,48 @@ async def test_refresh_rejects_disabled_user(client: AsyncClient, db_session):
 
     resp = await client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logout_blacklists_refresh_token(client: AsyncClient):
+    """Logout must revoke the refresh token so it can't be reused (#8)."""
+    await client.post("/api/auth/register", json={
+        "email": "logout@test.com", "username": "logoutuser", "password": "password123",
+    })
+    resp = await client.post("/api/auth/login", json={
+        "email": "logout@test.com", "password": "password123",
+    })
+    assert resp.status_code == 200
+    tokens = resp.json()
+    access = tokens["access_token"]
+    refresh = tokens["refresh_token"]
+    headers = {"Authorization": f"Bearer {access}"}
+
+    # 登出：同时携带 refresh_token 供后端拉黑
+    resp = await client.post("/api/auth/logout", headers=headers, json={"refresh_token": refresh})
+    assert resp.status_code == 204
+
+    # 登出后 access token 立即失效
+    resp = await client.get("/api/auth/me", headers=headers)
+    assert resp.status_code == 401
+
+    # 登出后 refresh token 也不应能换取新 token
+    resp = await client.post("/api/auth/refresh", json={"refresh_token": refresh})
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logout_without_refresh_body_still_works(client: AsyncClient):
+    """Logout without a body must remain backward compatible (access-only revoke)."""
+    await client.post("/api/auth/register", json={
+        "email": "logout2@test.com", "username": "logoutuser2", "password": "password123",
+    })
+    resp = await client.post("/api/auth/login", json={
+        "email": "logout2@test.com", "username": "logoutuser2", "password": "password123",
+    })
+    assert resp.status_code == 200
+    tokens = resp.json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    resp = await client.post("/api/auth/logout", headers=headers)
+    assert resp.status_code == 204
