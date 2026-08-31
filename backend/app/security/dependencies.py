@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.security.jwt import create_visitor_token, decode_token
-from app.utils.redis_client import get_redis
+from app.utils.redis_client import get_security_redis
 
 
 async def get_current_user(
@@ -22,20 +22,24 @@ async def get_current_user(
         )
 
     token = auth_header[7:]
-    try:
-        payload = decode_token(token)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        )
+    # P2-10：限流中间件已解码过则复用，避免每请求双重验签。
+    # 中间件解码失败时不写 state，这里照常自行解码并 401。
+    payload = getattr(request.state, "jwt_payload", None)
+    if payload is None:
+        try:
+            payload = decode_token(token)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+            )
 
     if payload.get("type") != "access":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong token type"
         )
 
-    # Check blacklist
-    redis = await get_redis()
+    # Check blacklist（安全状态存于独立 Redis 库，不受缓存淘汰影响）
+    redis = await get_security_redis()
     blacklisted = await redis.get(f"jwt:blacklist:{payload['jti']}")
     if blacklisted:
         raise HTTPException(
@@ -70,7 +74,7 @@ async def get_visitor_or_user(
             pass
 
     visitor_token = request.cookies.get("visitor_token")
-    redis = await get_redis()
+    redis = await get_security_redis()
     if visitor_token and await redis.exists(f"guest:{visitor_token}"):
         await redis.expire(f"guest:{visitor_token}", 86400)
         return None, visitor_token

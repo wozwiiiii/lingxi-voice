@@ -65,3 +65,4 @@ class SynthesizeResponse(BaseModel):
     project_id: str
     status: str
     message: str
+    progress_ticket: str | None = None

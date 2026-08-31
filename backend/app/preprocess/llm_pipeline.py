@@ -7,7 +7,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, Field, ValidationError
 
 from app.config import settings
-from app.preprocess.rule_engine import PreprocessResult, rule_preprocess
+from app.preprocess.rule_engine import rule_fallback, rule_preprocess
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +72,10 @@ class LLMPipeline:
                 last_error = e
                 logger.error(f"LLM attempt {attempt + 1} unexpected: {e}")
 
-        logger.error(f"LLM all retries failed, falling back to raw text: {last_error}")
-        return text
+        # P2-9：LLM 三次重试全失败后的兜底是确定性规则替换（符号读音/
+        # 常见化学式），不再是原样输出——符号至少能被正确读出来。
+        logger.error(f"LLM all retries failed, using rule fallback: {last_error}")
+        return rule_fallback(text)
 
 
 llm_pipeline = LLMPipeline()

@@ -15,6 +15,9 @@ class Settings(BaseSettings):
 
     # Redis
     REDIS_URL: str = "redis://redis:6379/0"
+    # 安全状态（JWT 黑名单、访客会话、SSE ticket）使用的逻辑库，
+    # 与缓存类 key 隔离，避免缓存淘汰策略影响安全状态
+    REDIS_SECURITY_DB: int = 1
 
     # JWT
     JWT_SECRET_KEY: str = "lingxi-dev-secret-do-not-use-in-production"

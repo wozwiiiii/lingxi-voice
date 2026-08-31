@@ -18,6 +18,33 @@ from app.providers.base import (
 logger = logging.getLogger(__name__)
 
 
+async def resolve_provider_voice_id(voice_id: str) -> str:
+    """将数据库 Voice UUID 解析为供应商侧真实 voice_id。
+
+    克隆声音在 DB 中以 UUID 存储，供应商侧 id 存于 provider_metadata；
+    预设/直传字符串则原样返回。合成与流式合成必须共用此解析，
+    否则流式路径传 UUID 会被供应商拒绝。
+    """
+    import uuid as uuid_mod
+
+    try:
+        uid = uuid_mod.UUID(voice_id)
+    except (ValueError, AttributeError):
+        return voice_id  # 已是供应商侧字符串，原样使用
+
+    from sqlalchemy import select
+
+    from app.database import AsyncSessionLocal
+    from app.models.voice import Voice
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Voice).where(Voice.id == uid))
+        voice = result.scalar_one_or_none()
+        if voice and voice.provider_metadata:
+            return voice.provider_metadata.get("voice_id", voice_id)
+    return voice_id
+
+
 class SiliconFlowProvider(TTSProvider):
     def __init__(self) -> None:
         super().__init__(
@@ -49,22 +76,9 @@ class SiliconFlowProvider(TTSProvider):
         self, text: str, voice_id: str, params: SynthesisParams
     ) -> AudioResult:
         import time
-        import uuid as uuid_mod
 
         # Resolve the real API voice ID from DB if voice_id is a UUID
-        actual_voice_id = voice_id
-        try:
-            uid = uuid_mod.UUID(voice_id)
-            from app.database import AsyncSessionLocal
-            from app.models.voice import Voice
-            from sqlalchemy import select
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(select(Voice).where(Voice.id == uid))
-                voice = result.scalar_one_or_none()
-                if voice and voice.provider_metadata:
-                    actual_voice_id = voice.provider_metadata.get("voice_id", voice_id)
-        except (ValueError, AttributeError):
-            pass  # voice_id is already a plain string, use as-is
+        actual_voice_id = await resolve_provider_voice_id(voice_id)
 
         start = time.monotonic()
         try:
@@ -98,6 +112,8 @@ class SiliconFlowProvider(TTSProvider):
     async def synthesize_stream(
         self, text: str, voice_id: str, params: SynthesisParams
     ) -> AsyncIterator[bytes]:
+        # 与 synthesize 一致：UUID → 供应商侧真实 voice_id
+        actual_voice_id = await resolve_provider_voice_id(voice_id)
         async with httpx.AsyncClient(timeout=300) as client:
             async with client.stream(
                 "POST",
@@ -108,7 +124,7 @@ class SiliconFlowProvider(TTSProvider):
                 },
                 json={
                     "model": "FunAudioLLM/CosyVoice2-0.5B",
-                    "voice": voice_id,
+                    "voice": actual_voice_id,
                     "input": text,
                     "speed": params.speed,
                     "response_format": "pcm",

@@ -47,10 +47,14 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         yield db_session
 
     # Replace global redis client with fakeredis (not just FastAPI DI override,
-    # because internal code calls get_redis() directly, not via Depends)
+    # because internal code calls get_redis() directly, not via Depends).
+    # 缓存库与安全状态库都替换为同一个 fakeredis 实例（逻辑库隔离是部署细节，
+    # 测试只关心行为）。
     fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     original_redis = redis_module.redis_client
+    original_security_redis = redis_module.security_redis_client
     redis_module.redis_client = fake_redis
+    redis_module.security_redis_client = fake_redis
 
     # Also override get_redis for DI-based calls
     async def override_get_redis():
@@ -63,6 +67,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         yield ac
     app.dependency_overrides.clear()
     redis_module.redis_client = original_redis
+    redis_module.security_redis_client = original_security_redis
 
 
 @pytest_asyncio.fixture

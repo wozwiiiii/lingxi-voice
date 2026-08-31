@@ -56,6 +56,8 @@ class CircuitBreaker:
     async def record_failure(self) -> None:
         redis = await get_redis()
         current = await redis.incr(self._key("failures"))
+        # 失败计数器加 TTL：窗口外的零星失败不应跨天累积触发熔断
+        await redis.expire(self._key("failures"), self.recovery_timeout * 2)
         if current >= self.failure_threshold:
             await self._transition_to(CircuitState.OPEN)
 

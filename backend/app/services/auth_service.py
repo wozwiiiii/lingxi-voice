@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.security.jwt import create_access_token, create_refresh_token, decode_token
-from app.utils.redis_client import get_redis
+from app.utils.redis_client import get_security_redis
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -76,7 +76,7 @@ async def refresh_access_token(db: AsyncSession, refresh_token_str: str) -> Toke
     # Reject revoked refresh tokens (logout or prior rotation) (#8)
     jti = payload.get("jti", "")
     if jti:
-        redis = await get_redis()
+        redis = await get_security_redis()
         if await redis.get(f"jwt:blacklist:{jti}"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token revoked"
@@ -99,7 +99,7 @@ async def refresh_access_token(db: AsyncSession, refresh_token_str: str) -> Toke
 
     # Rotate refresh token: blacklist old one, issue new pair
     if jti:
-        redis = await get_redis()
+        redis = await get_security_redis()
         remaining_ttl = max(0, int(payload.get("exp", 0) - __import__("time").time()))
         await redis.setex(f"jwt:blacklist:{jti}", remaining_ttl, "1")
 
@@ -112,7 +112,7 @@ async def logout_user(access_jti: str) -> None:
     """Blacklist an access token's jti until its natural expiry."""
     from app.config import settings
 
-    redis = await get_redis()
+    redis = await get_security_redis()
     ttl = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     await redis.setex(f"jwt:blacklist:{access_jti}", ttl, "1")
 
@@ -136,5 +136,5 @@ async def logout_refresh_token(refresh_token_str: str) -> None:
     remaining_ttl = max(0, int(payload.get("exp", 0) - time.time()))
     if remaining_ttl <= 0:
         return
-    redis = await get_redis()
+    redis = await get_security_redis()
     await redis.setex(f"jwt:blacklist:{jti}", remaining_ttl, "1")

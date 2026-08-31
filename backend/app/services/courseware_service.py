@@ -24,7 +24,11 @@ async def create_from_upload(
     original_filename: str,
     description: str | None = None,
 ) -> CoursewareProject:
-    result = parse_pptx(filepath, original_filename)
+    # python-pptx 解析是同步 CPU/IO 混合操作，20MB 课件足以卡住事件循环
+    # 数百毫秒——卸载到线程池（与 build_zip 的 storage.read 同一策略）
+    import asyncio
+
+    result = await asyncio.to_thread(parse_pptx, filepath, original_filename)
 
     # Auto-assign first available preset voice as default
     default_voice_id = None
@@ -139,12 +143,33 @@ async def build_zip(
         "slides": [],
     }
 
+    # 先用 asyncio.to_thread 并行读取所有音频/课件文件，避免在 ZIP 写入循环中
+    # 同步阻塞事件循环，也避免 open() 未用 with 导致的文件句柄泄漏
+    import asyncio
+
+    async def _read(path: str) -> bytes:
+        return await storage.read(path)
+
+    audio_tasks = []
+    audio_indices = []
+    for slide in slides:
+        if slide.audio_path and slide.status == "completed":
+            audio_tasks.append(_read(slide.audio_path))
+            audio_indices.append(slide.slide_index)
+
+    pptx_task = None
+    if project.original_pptx_path:
+        pptx_task = _read(project.original_pptx_path)
+
+    audio_results = await asyncio.gather(*audio_tasks)
+    audio_map = dict(zip(audio_indices, audio_results))
+    pptx_data = await pptx_task if pptx_task else None
+
     zf_buffer = io.BytesIO()
     with zipfile.ZipFile(zf_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for slide in slides:
             if slide.audio_path and slide.status == "completed":
-                abs_path = await storage.get_path(slide.audio_path)
-                audio_data = open(abs_path, "rb").read()
+                audio_data = audio_map[slide.slide_index]
                 audio_name = f"audio/slide_{slide.slide_index:02d}.mp3"
                 zf.writestr(audio_name, audio_data)
                 manifest["slides"].append({
@@ -160,9 +185,7 @@ async def build_zip(
             json.dumps(manifest, ensure_ascii=False, indent=2),
         )
 
-        if project.original_pptx_path:
-            abs_path = await storage.get_path(project.original_pptx_path)
-            pptx_data = open(abs_path, "rb").read()
+        if pptx_data is not None:
             zf.writestr("original.pptx", pptx_data)
 
     return zf_buffer.getvalue()

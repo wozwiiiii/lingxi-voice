@@ -102,7 +102,11 @@ async function handleSynthesize() {
   try {
     const result = await startSynthesis(projectId.value);
     message.info(result.message || "合成任务已提交，正在后台合成");
-    listenSynthesisProgress(projectId.value);
+    if (result.progress_ticket) {
+      listenSynthesisProgress(projectId.value, result.progress_ticket);
+    } else {
+      synthesizing.value = false;
+    }
   } catch (e: any) {
     message.error(e.response?.data?.detail || "合成失败，请重试");
     synthesizing.value = false;
@@ -110,10 +114,10 @@ async function handleSynthesize() {
 }
 
 // 通过 SSE 实时跟踪后台合成进度
-function listenSynthesisProgress(pid: string) {
+function listenSynthesisProgress(pid: string, ticket: string) {
   closeSynthesisStream();
   synthStreamEnded = false;
-  const es = getSynthesisProgress(pid);
+  const es = getSynthesisProgress(pid, ticket);
   synthEventSource = es;
 
   es.onmessage = async (ev) => {

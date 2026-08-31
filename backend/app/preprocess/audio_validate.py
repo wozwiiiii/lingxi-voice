@@ -51,7 +51,11 @@ async def validate_audio_upload(file: UploadFile) -> ValidatedAudio:
         )
 
     # 3. Sanitize filename → store
-    ext = ".mp3" if is_mp3 else ".wav"
+    # P2-3：扩展名必须与实际容器格式一致（magic bytes 识别结果）。
+    # 旧实现把 flac/ogg 也存成 .wav——soundfile 按内容读取能跑，
+    # 但文件名与格式不符违反最小惊讶原则，也会误导后续处理方。
+    detected = next((fmt for k, fmt in MAGIC_BYTES.items() if magic.startswith(k)), None)
+    ext = ".mp3" if is_mp3 else f".{detected or 'wav'}"
     tmp_path = await storage.save(content, "uploads", ext)
     abs_path = await storage.get_path(tmp_path)
 

@@ -12,9 +12,12 @@ from app.utils import redis_client as redis_module
 def _mock_redis():
     fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
     original = redis_module.redis_client
+    original_security = redis_module.security_redis_client
     redis_module.redis_client = fake
+    redis_module.security_redis_client = fake
     yield
     redis_module.redis_client = original
+    redis_module.security_redis_client = original_security
 
 
 @pytest.fixture
@@ -88,10 +91,25 @@ def _make_request(headers: dict | None = None, client=("10.0.0.2", 50000)) -> Re
 
 
 class TestClientIp:
-    def test_uses_first_forwarded_entry(self):
+    def test_uses_rightmost_forwarded_entry(self):
+        """nginx 的 $proxy_add_x_forwarded_for 在末尾追加真实来源，
+        只有最右侧条目可信；左侧条目可被客户端伪造。"""
         from app.main import _client_ip
 
         req = _make_request({"X-Forwarded-For": "203.0.113.7, 10.0.0.2"})
+        assert _client_ip(req) == "10.0.0.2"
+
+    def test_spoofed_left_entry_ignored(self):
+        """攻击者自带伪造的左侧条目不应影响限流 key。"""
+        from app.main import _client_ip
+
+        req = _make_request({"X-Forwarded-For": "1.2.3.4, 203.0.113.9"})
+        assert _client_ip(req) == "203.0.113.9"
+
+    def test_single_entry(self):
+        from app.main import _client_ip
+
+        req = _make_request({"X-Forwarded-For": "203.0.113.7"})
         assert _client_ip(req) == "203.0.113.7"
 
     def test_falls_back_to_client_host(self):
@@ -110,7 +128,8 @@ class TestClientIp:
 class TestRateLimitMiddlewareKey:
     @pytest.mark.asyncio
     async def test_rate_key_uses_forwarded_ip(self, client):
-        """Behind nginx the middleware must key on the original client IP (#9)."""
+        """Behind nginx the middleware must key on the original client IP (#9).
+        取最右侧条目（可信代理追加），左侧条目视为可伪造。"""
         from app.security import rate_limit as rl_module
 
         captured = {}
@@ -130,7 +149,7 @@ class TestRateLimitMiddlewareKey:
             rl_module.rate_limiter = original
 
         assert resp.status_code == 200
-        assert captured["key"] == "tts:rate:ip:203.0.113.7:1min"
+        assert captured["key"] == "tts:rate:ip:10.0.0.2:1min"
 
     @pytest.mark.asyncio
     async def test_rate_key_falls_back_to_client_host(self, client):

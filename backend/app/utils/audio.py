@@ -55,6 +55,19 @@ def get_audio_duration_ms(filepath: str) -> int:
     return int(info["duration"] * 1000)
 
 
+def probe_duration_ms(filepath: str) -> int | None:
+    """安全读取真实音频时长（毫秒）。
+
+    ffprobe 不可用、或文件并非有效音频（如测试中的桩数据）时返回 None，
+    调用方回退 0 表示「未知」——绝不回退成接口往返耗时（P2-1：那会把
+    HTTP 延迟当成音频时长写进任务记录和下载包 manifest）。
+    """
+    try:
+        return get_audio_duration_ms(filepath)
+    except Exception:
+        return None
+
+
 def read_file_header(filepath: str, nbytes: int = 4) -> bytes:
     with open(filepath, "rb") as f:
         return f.read(nbytes)

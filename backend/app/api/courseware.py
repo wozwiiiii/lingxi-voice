@@ -54,6 +54,20 @@ def _check_ownership_write(project: CoursewareProject | None, user: User | None)
         raise HTTPException(status_code=404)
 
 
+async def _purge_tts_cache(redis, audio_path: str) -> None:
+    """删除指向某音频文件的 TTS 结果缓存键（P2-6）。
+
+    tts_service 写缓存时维护了反向索引 tts:refs:{path} → 缓存哈希
+    （path 与哈希严格 1:1），删除文件时据此清掉 tts:result 键，
+    避免缓存命中返回已删除路径。
+    """
+    refs_key = f"tts:refs:{audio_path}"
+    cache_hash = await redis.get(refs_key)
+    if cache_hash:
+        await redis.delete(f"tts:result:{cache_hash}")
+    await redis.delete(refs_key)
+
+
 @router.post("/upload", response_model=CoursewareProjectResponse, status_code=201)
 async def upload_pptx(
     file: UploadFile,
@@ -166,15 +180,42 @@ async def synthesize_courseware(
 ):
     project = await get_project(db, project_id)
     _check_ownership_write(project, user)
-    if project.status not in ("ready", "failed", "synthesizing"):
+    # 只允许从 ready/failed 发起（P1-8）：synthesizing 状态下再次提交会叠加
+    # 多个 Celery 任务并发处理同一项目——重复消耗云 API 费用 + slide 状态竞写。
+    if project.status not in ("ready", "failed"):
         raise HTTPException(
             status_code=409,
             detail=f"课件状态为 {project.status}，无法开始合成",
         )
 
+    # 服务端幂等锁（P1-8）：前端防抖不是信任边界。状态检查与提交之间存在
+    # 并发窗口，双击/重放的两个请求都会读到 ready——用 Redis SET NX 抢锁，
+    # 抢不到即 409。锁由 worker 在 _finalize_project 释放，TTL 3600 兜底
+    # （worker 崩溃后锁自然过期，不会永久卡死重试通道）。
+    from app.utils.redis_client import get_redis
+
+    redis = await get_redis()
+    lock_key = f"courseware:lock:{project.id}"
+    got_lock = await redis.set(lock_key, "1", nx=True, ex=3600)
+    if not got_lock:
+        raise HTTPException(status_code=409, detail="合成任务正在进行中，请勿重复提交")
+
     previous_status = project.status
     project.status = "synthesizing"
     await db.commit()  # Commit so the Celery task's own session sees the new status
+
+    # 签发一次性 SSE 进度 ticket：存入安全 Redis 库，绑定 user+project，
+    # TTL 600s。SSE 端点凭票访问，不再在 URL 中暴露 JWT（问题 12）。
+    import uuid as ticket_uuid
+    from app.utils.redis_client import get_security_redis
+
+    progress_ticket = ticket_uuid.uuid4().hex
+    sec_redis = await get_security_redis()
+    await sec_redis.setex(
+        f"sse:ticket:{progress_ticket}",
+        600,
+        f"{user.id}:{project.id}",
+    )
 
     # Submit to Celery instead of synthesizing synchronously in the request
     from app.tasks.courseware_tasks import synthesize_courseware_task
@@ -186,6 +227,9 @@ async def synthesize_courseware(
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Synthesis task submission failed for {project_id}: {e}")
+        # 清理已签发但不会使用的 ticket 与幂等锁
+        await sec_redis.delete(f"sse:ticket:{progress_ticket}")
+        await redis.delete(lock_key)
         result = await db.execute(
             select(CoursewareProject).where(CoursewareProject.id == uuid_mod.UUID(project_id))
         )
@@ -199,27 +243,43 @@ async def synthesize_courseware(
         project_id=str(project.id),
         status="synthesizing",
         message="合成任务已提交，请通过进度接口查看",
+        progress_ticket=progress_ticket,
     )
 
 
 @router.get("/{project_id}/progress")
 async def get_progress(
     project_id: str,
-    token: str = Query(None),
+    ticket: str = Query(..., description="合成时签发的一次性进度 ticket"),
     db: AsyncSession = Depends(get_db),
 ):
-    # SSE can't send Authorization header — accept token as query param
-    from app.security.jwt import decode_token
-    import uuid as _uuid
+    """SSE 进度流：凭 synthesize 时签发的一次性 ticket 访问。
+
+    旧实现把 JWT 放在 query 参数中，会进入 nginx access log、浏览器历史
+    与 Referer，属于凭据泄露面。ticket 是项目级一次性凭据，TTL 600s，
+    即使泄露也只能查看该项目的合成进度。
+    """
+    from app.utils.redis_client import get_security_redis
+
+    sec_redis = await get_security_redis()
+    ticket_val = await sec_redis.get(f"sse:ticket:{ticket}")
+    if not ticket_val:
+        raise HTTPException(status_code=401, detail="进度 ticket 无效或已过期")
+
     try:
-        payload = decode_token(token or "")
-        from app.models.user import User
-        result = await db.execute(select(User).where(User.id == _uuid.UUID(payload["sub"])))
-        user = result.scalar_one_or_none()
-    except Exception:
-        user = None
+        ticket_user_id, ticket_project_id = ticket_val.split(":", 1)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="进度 ticket 无效")
+
+    # ticket 绑定的项目必须与 URL 中的 project_id 一致
+    if ticket_project_id != project_id:
+        raise HTTPException(status_code=403, detail="ticket 与项目不匹配")
+
     project = await get_project(db, project_id)
-    _check_ownership(project, user)
+    # 公共预设（user_id IS NULL）允许所有人读；私有项目需 ticket 签发者拥有
+    if project is not None and project.user_id is not None:
+        if str(project.user_id) != ticket_user_id:
+            raise HTTPException(status_code=403, detail="无权访问该项目")
 
     from app.utils.redis_client import get_redis
     import asyncio
@@ -227,7 +287,7 @@ async def get_progress(
 
     async def event_stream():
         redis = await get_redis()
-        for _ in range(300):
+        for _ in range(600):
             progress = await redis.get(f"courseware:progress:{project_id}")
             if progress:
                 data = json.loads(progress)
@@ -277,8 +337,15 @@ async def delete_courseware(
     _check_ownership_write(project, user)
 
     slides = await get_slides(db, project_id)
+
+    # 先清理指向这些音频的 TTS 缓存（P2-6）：否则同参数文本再次合成会
+    # 命中缓存返回已删除路径 → /media 404。文件删除失败也要清缓存。
+    from app.utils.redis_client import get_redis
+
+    redis = await get_redis()
     for slide in slides:
         if slide.audio_path:
+            await _purge_tts_cache(redis, slide.audio_path)
             try:
                 await storage.delete(slide.audio_path)
             except Exception:

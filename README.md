@@ -6,8 +6,8 @@
 
 | 版本 | 目录 | 状态 |
 |------|------|------|
-| Python 后端（主） | `backend/` | ✅ 已实现、96 测试通过、Docker 部署验证通过 |
-| Java 后端 | `lingxi-voice-java/` | ⚠️ 契约已对齐前端（123 测试通过），功能为参考实现，未做端到端联调 |
+| Python 后端（主） | `backend/` | ✅ 已实现、113 测试通过 + 22 项契约验证、Docker 部署验证通过 |
+| Java 后端 | `lingxi-voice-java/` | ⚠️ **契约对齐参考实现**：API 契约与 Python 版对齐（123 单测通过），但核心 Provider 为存根（`synthesize` 返回空音频），MCP 工具未做真实注解，未做端到端联调。不可作为可用服务运行 |
 
 ## 功能
 
@@ -71,7 +71,7 @@ npm run dev    # 访问 http://localhost:5173，/api 代理到 :8000
 | 后端 | Python 3.10 + FastAPI + Celery + PostgreSQL 16 + Redis 7 |
 | 前端 | Vue 3 + TypeScript + Pinia + Ant Design Vue 4 + Vite |
 | 部署 | Docker Compose (5 服务: 前端 + API + Worker + PG + Redis) + Nginx |
-| 测试 | pytest (Python 96) / JUnit+Mockito (Java 123) / vue-tsc + Vite (前端) |
+| 测试 | pytest (Python 113) / JUnit+Mockito (Java 123) / vue-tsc + Vite (前端) |
 
 ## 架构亮点
 

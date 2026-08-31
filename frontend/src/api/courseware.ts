@@ -44,6 +44,7 @@ export interface SynthesizeResponse {
   project_id: string;
   status: string;
   message: string;
+  progress_ticket?: string;
 }
 
 export async function uploadPPTX(file: File, description?: string): Promise<CoursewareProject> {
@@ -82,15 +83,11 @@ export async function startSynthesis(projectId: string): Promise<SynthesizeRespo
 /**
  * Open an SSE stream that yields synthesis progress `{current, total, status}`.
  *
- * EventSource cannot set custom headers, so the backend `get_progress` endpoint
- * authenticates via a `token` query param instead of the Authorization header
- * (see backend/app/api/courseware.py). Mirror the token source used by the
- * axios interceptor in apiClient.
+ * 使用 synthesize 时后端签发的一次性 ticket 作为凭据，而非 JWT。
+ * ticket 绑定 user+project，TTL 600s，即使泄露也只能查看该项目进度。
  */
-export function getSynthesisProgress(projectId: string): EventSource {
-  const token = localStorage.getItem("access_token");
-  const query = token ? `?token=${encodeURIComponent(token)}` : "";
-  return new EventSource(`/api/courseware/${projectId}/progress${query}`);
+export function getSynthesisProgress(projectId: string, ticket: string): EventSource {
+  return new EventSource(`/api/courseware/${projectId}/progress?ticket=${encodeURIComponent(ticket)}`);
 }
 
 export async function downloadCourseware(projectId: string): Promise<Blob> {

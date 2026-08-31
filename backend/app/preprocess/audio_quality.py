@@ -86,8 +86,10 @@ def _estimate_silence_ratio(signal: np.ndarray, sr: int) -> float:
 
 
 def _estimate_clipping_ratio(signal: np.ndarray) -> float:
-    max_val = np.max(np.abs(signal))
-    if max_val < 1e-10:
+    # P2-2：绝对阈值（满量程的 98%），不是相对本段峰值的 98%。
+    # 相对阈值下，整体很轻的录音（峰值 0.3）会把阈值拉到 0.294，
+    # 大量正常采样被误判为「削波」——安静但干净的样本被错误拒绝。
+    # soundfile 读出的 PCM 浮点幅度范围为 [-1.0, 1.0]。
+    if len(signal) == 0:
         return 0.0
-    threshold = 0.98 * max_val
-    return np.sum(np.abs(signal) >= threshold) / len(signal)
+    return float(np.sum(np.abs(signal) >= 0.98) / len(signal))

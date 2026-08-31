@@ -1,5 +1,6 @@
 # 灵犀语伴 生产部署编排
-# 端口暴露原则：仅前端 80 对外；8000 供本地调试 API/docs；Postgres/Redis 不暴露宿主机
+# 端口暴露原则：仅前端 80 对外；API 只在容器网络内可达（调试用 exec）；
+# Postgres/Redis 不暴露宿主机
 
 services:
   # ---- 前端：构建 dist 并由 nginx 托管 ----
@@ -21,11 +22,14 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
+    # P2-12：不再把宿主源码挂进容器（旧配置 ../backend:/app 会覆盖镜像内
+    # COPY 的代码，"部署"实际等于开发态）；代码随镜像构建进入，改代码需
+    # docker compose up -d --build 重建。media_data 卷持久化合成产物。
     volumes:
-      - ../backend:/app
       - media_data:/app/media
-    ports:
-      - "8000:8000"  # 本地调试 API/docs 用；生产可注释此行
+    # 8000 不再映射宿主机（P2-12）：直连 uvicorn 可绕过 nginx 的
+    # X-Forwarded-For 处理与限流语义。调试用：
+    #   docker compose exec api curl localhost:8000/api/health
     env_file:
       - .env
     depends_on:
@@ -42,7 +46,6 @@ services:
       dockerfile: deploy/Dockerfile.backend
     command: celery -A worker.celery_app worker --loglevel=info --concurrency=2
     volumes:
-      - ../backend:/app
       - media_data:/app/media
     env_file:
       - .env
@@ -69,9 +72,13 @@ services:
     restart: unless-stopped
 
   # ---- Redis（加密码鉴权，不暴露宿主机）----
+  # 淘汰策略用 volatile-lru：只淘汰带 TTL 的 key，且优先淘汰最久未用的。
+  # 安全状态（JWT 黑名单/访客会话，db 1）体量极小且访问频繁，
+  # 不会被缓存类大 key（tts:result 等）挤出；无 TTL 的熔断状态永不淘汰。
+  # （旧配置 allkeys-lru 会在内存压力下逐出黑名单，导致已登出 token 复活）
   redis:
     image: redis:7-alpine
-    command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\" --maxmemory-policy allkeys-lru --maxmemory 256mb"]
+    command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\" --maxmemory-policy volatile-lru --maxmemory 256mb"]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     healthcheck:

@@ -51,7 +51,9 @@ async def run():
 
     fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     original_redis = redis_module.redis_client
+    original_security_redis = redis_module.security_redis_client
     redis_module.redis_client = fake_redis
+    redis_module.security_redis_client = fake_redis
 
     # 共享单个 session（与 pytest conftest 一致）：SQLite in-memory 每个连接是独立库
     async with session_factory() as shared_session:
@@ -157,6 +159,7 @@ async def run():
         finally:
             app.dependency_overrides.clear()
             redis_module.redis_client = original_redis
+            redis_module.security_redis_client = original_security_redis
 
     # 先退出 session 再 dispose engine，避免 "no active connection"
     await engine.dispose()

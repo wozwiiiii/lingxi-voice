@@ -24,9 +24,12 @@ from app.utils import redis_client as redis_module
 def _mock_redis():
     fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
     original = redis_module.redis_client
+    original_security = redis_module.security_redis_client
     redis_module.redis_client = fake
+    redis_module.security_redis_client = fake
     yield
     redis_module.redis_client = original
+    redis_module.security_redis_client = original_security
 
 
 class TestJWTAccessToken:

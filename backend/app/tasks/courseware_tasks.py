@@ -1,4 +1,13 @@
-"""Celery tasks for courseware batch synthesis with Semaphore concurrency."""
+"""Celery tasks for courseware batch synthesis with Semaphore concurrency.
+
+并发模型（修复共享 Session 问题）：
+- 每个 slide 在**独立 AsyncSession** 中合成并立即 commit。
+  AsyncSession 不支持并发使用，旧实现把同一个 session 传给 gather
+  中的多个协程，会触发 "another operation is in progress" 或状态错乱。
+- 进度统计（_push_progress）读取的是已提交数据：旧实现主 session
+  直到最后才 commit，READ COMMITTED 下进度查询永远读到 0（SSE 进度恒 0）。
+  现在每页 commit 后即可被进度查询看到。
+"""
 
 import asyncio
 import json
@@ -7,15 +16,18 @@ import os
 import uuid
 
 from celery import shared_task
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
-from app.config import settings
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, engine
 from app.models.courseware import CoursewareProject, CoursewareSlide
 from app.models.task import SynthesisTask
 from app.preprocess.llm_pipeline import llm_pipeline
 from app.providers.base import SynthesisParams
-from app.providers.provider_chain import get_active_provider_async
+from app.providers.provider_chain import (
+    get_active_provider_async,
+    get_circuit_for_provider,
+)
+from app.utils.audio import probe_duration_ms
 from app.utils.redis_client import get_redis
 from app.utils.storage import storage
 
@@ -26,63 +38,105 @@ CONCURRENCY = int(os.getenv("COURSEWARE_SYNTHESIS_CONCURRENCY", "3"))
 
 @shared_task(bind=True, max_retries=1, acks_late=True)
 def synthesize_courseware_task(self, project_id: str):
-    return asyncio.run(_synthesize(project_id))
+    return asyncio.run(_run_with_cleanup(_synthesize(project_id)))
+
+
+async def _run_with_cleanup(coro):
+    """任务结束时归还绑定本事件循环的底层连接（P1-7）。
+
+    Celery prefork 每个任务都跑在 asyncio.run() 创建的新事件循环里，而
+    engine / redis_client 是模块级单例——连接池中的 asyncpg / redis 连接
+    绑定创建时的循环。若不在任务末尾释放，下一个任务在另一个循环上复用
+    旧连接会报 "attached to a different loop" / "Event loop is closed"。
+    在本循环内 dispose / aclose 后，池在下一个任务的循环上自动重建连接。
+    该包装只被 Celery worker 进程执行，API 进程的长生命周期池不受影响。
+    """
+    from app.utils.redis_client import redis_client as rc
+
+    try:
+        return await coro
+    finally:
+        for name, closer in (("engine", engine.dispose), ("redis", rc.aclose)):
+            try:
+                await closer()
+            except Exception:
+                logger.warning(f"{name} cleanup after task failed", exc_info=True)
 
 
 async def _synthesize(project_id: str):
+    # 1. 读取待合成 slide 的 id（短事务，随后关闭）
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(CoursewareSlide)
+            select(CoursewareSlide.id, CoursewareSlide.slide_index)
             .where(
                 CoursewareSlide.project_id == uuid.UUID(project_id),
                 CoursewareSlide.status.in_(["pending", "failed"]),
             )
             .order_by(CoursewareSlide.slide_index)
         )
-        slides = list(result.scalars().all())
+        pending = [(row[0], row[1]) for row in result.all()]
 
-        if not slides:
-            await _update_project_status(db, project_id, "completed")
-            await db.commit()
-            return
+    if not pending:
+        await _finalize_project(project_id)
+        return
 
-        semaphore = asyncio.Semaphore(CONCURRENCY)
+    semaphore = asyncio.Semaphore(CONCURRENCY)
 
-        async def process_one(slide: CoursewareSlide) -> None:
-            async with semaphore:
+    async def process_one(slide_id: uuid.UUID) -> None:
+        async with semaphore:
+            # 每页独立 session + 立即提交：
+            # ① 避免并发共享 AsyncSession；② 让进度查询能读到已完成状态
+            async with AsyncSessionLocal() as slide_db:
+                slide = await slide_db.get(CoursewareSlide, slide_id)
+                if slide is None:
+                    return
                 try:
-                    await _synthesize_slide(db, slide)
+                    await _synthesize_slide(slide_db, slide)
                 except Exception as e:
                     slide.status = "failed"
-                    logger.error(f"Slide {slide.slide_index} failed: {e}")
-                await db.flush()
-                await _push_progress(project_id)
+                    logger.error(f"Slide synthesis failed: {e}")
+                await slide_db.commit()
+            await _push_progress(project_id)
 
-        await asyncio.gather(*[process_one(s) for s in slides], return_exceptions=True)
-        await db.commit()  # Persist all slide changes
+    await asyncio.gather(*[process_one(sid) for sid, _ in pending])
 
-        # Determine final status and push to Redis
+    # 2. 汇总最终状态
+    await _finalize_project(project_id)
+
+
+async def _finalize_project(project_id: str):
+    """统计全部 slide 状态，更新 project 状态，推送最终进度。"""
+    async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(CoursewareSlide).where(
+            select(CoursewareSlide.status).where(
                 CoursewareSlide.project_id == uuid.UUID(project_id)
             )
         )
-        all_slides = result.scalars().all()
-        total = len(all_slides)
-        completed = sum(1 for s in all_slides if s.status == "completed")
-        failed_count = sum(1 for s in all_slides if s.status == "failed")
-        final_status = "failed" if failed_count == total else "completed"
+        statuses = [row[0] for row in result.all()]
+        total = len(statuses)
+        completed = statuses.count("completed")
+        failed_count = statuses.count("failed")
+        final_status = "failed" if total > 0 and failed_count == total else "completed"
 
-        await _update_project_status(db, project_id, final_status)
+        proj_result = await db.execute(
+            select(CoursewareProject).where(
+                CoursewareProject.id == uuid.UUID(project_id)
+            )
+        )
+        project = proj_result.scalar_one_or_none()
+        if project:
+            project.status = final_status
         await db.commit()
 
-        # Push final progress to Redis so SSE clients can terminate
-        redis = await get_redis()
-        await redis.set(
-            f"courseware:progress:{project_id}",
-            json.dumps({"current": completed, "total": total, "status": final_status}),
-            ex=7200,
-        )
+    # Push final progress to Redis so SSE clients can terminate
+    redis = await get_redis()
+    await redis.set(
+        f"courseware:progress:{project_id}",
+        json.dumps({"current": completed, "total": total, "status": final_status}),
+        ex=7200,
+    )
+    # 释放 API 层签发的合成幂等锁（P1-8）：允许用户在完成后再次发起合成
+    await redis.delete(f"courseware:lock:{project_id}")
 
 
 async def _synthesize_slide(db, slide: CoursewareSlide):
@@ -118,13 +172,28 @@ async def _synthesize_slide(db, slide: CoursewareSlide):
     )
 
     provider = await get_active_provider_async()
-    result = await provider.synthesize(processed, str(voice_id), params)
+    try:
+        result = await provider.synthesize(processed, str(voice_id), params)
+    except Exception:
+        # 供应商异常 → 记录失败供熔断器判定（与 tts_service 保持一致）
+        circuit = get_circuit_for_provider(provider.name)
+        if circuit:
+            await circuit.record_failure()
+        raise
+    circuit = get_circuit_for_provider(provider.name)
+    if circuit:
+        await circuit.record_success()
 
     audio_path = await storage.save(result.audio_data, "audio", "mp3")
 
+    # P2-1：与 tts_service 一致——探测落盘文件的真实时长，而非 provider
+    # HTTP 往返耗时；探测失败回退 0（未知）。
+    abs_path = await storage.get_path(audio_path)
+    real_duration_ms = await asyncio.to_thread(probe_duration_ms, abs_path) or 0
+
     slide.llm_processed_text = processed
     slide.audio_path = audio_path
-    slide.audio_duration_ms = result.duration_ms
+    slide.audio_duration_ms = real_duration_ms
     slide.status = "completed"
 
     task = SynthesisTask(
@@ -133,7 +202,7 @@ async def _synthesize_slide(db, slide: CoursewareSlide):
         llm_processed_text=processed,
         params={"speed": slide.speed}, status="completed",
         output_audio_path=audio_path, output_format="mp3",
-        provider_used=provider.name, duration_ms=result.duration_ms,
+        provider_used=provider.name, duration_ms=real_duration_ms,
     )
     db.add(task)
     await db.flush()
@@ -165,39 +234,10 @@ async def _push_progress(project_id: str):
     )
 
 
-async def _update_project_status(db, project_id: str, status: str):
-    """Update project status within an existing session (caller must commit)."""
-    result = await db.execute(
-        select(CoursewareProject).where(
-            CoursewareProject.id == uuid.UUID(project_id)
-        )
-    )
-    project = result.scalar_one_or_none()
-    if project:
-        project.status = status
-        await db.flush()
-
-
-async def _update_project_status_committed(project_id: str):
-    """Update project status in a fresh session with explicit commit."""
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(CoursewareSlide).where(
-                CoursewareSlide.project_id == uuid.UUID(project_id)
-            )
-        )
-        all_slides = result.scalars().all()
-        failed_count = sum(1 for s in all_slides if s.status == "failed")
-
-        new_status = "failed" if failed_count == len(all_slides) else "completed"
-        await _update_project_status(db, project_id, new_status)
-        await db.commit()
-
-
 @shared_task
 def cleanup_orphan_courseware():
     """Celery Beat task: delete courseware projects abandoned for 7+ days."""
-    return asyncio.run(_cleanup_orphans())
+    return asyncio.run(_run_with_cleanup(_cleanup_orphans()))
 
 
 async def _cleanup_orphans():
@@ -222,5 +262,5 @@ async def _cleanup_orphans():
             # Slides cascade-delete
             await db.delete(project)
         if orphans:
-            await db.flush()
+            await db.commit()
             logger.info(f"Cleaned up {len(orphans)} orphan courseware projects")

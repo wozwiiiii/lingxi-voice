@@ -91,10 +91,30 @@ class TestClippingAudio:
         path = _write_temp_wav(data, sr)
         try:
             report = check_audio_quality(path)
-            # May or may not reject based on clipping threshold
-            # But should always compute valid metrics
-            assert report.duration_s > 1.0
-            assert report.sample_rate == sr
+            # 绝对阈值（≥0.98 满量程）下，平顶采样必然被计入削波比。
+            # 合成纯音的帧能量均匀（SNR≈0），可能先被噪声分支拒绝——
+            # 这里只验证削波被正确检出且样本被拒。
+            assert report.clipping_ratio > 0.10
+            assert report.passed is False
+        finally:
+            Path(path).unlink()
+
+    def test_quiet_clean_audio_not_flagged_as_clipped(self):
+        """P2-2：安静但干净的录音（峰值远低于满量程）削波比必须为 0。
+
+        旧实现的阈值是本段峰值的 98%，安静录音会把阈值拉到极低，
+        大量正常采样被误判削波导致错误拒绝。
+        """
+        sr = 16000
+        duration = 2.0
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+        # 峰值只有 0.3 的干净正弦——离满量程很远，绝无削波
+        data = (0.3 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+
+        path = _write_temp_wav(data, sr)
+        try:
+            report = check_audio_quality(path)
+            assert report.clipping_ratio == 0.0
         finally:
             Path(path).unlink()
 

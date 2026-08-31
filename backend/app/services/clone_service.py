@@ -3,16 +3,19 @@
 import asyncio
 import uuid
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 
 from app.database import AsyncSessionLocal
 from app.models.consent import Consent
 from app.models.voice import Voice
 from app.preprocess.audio_quality import check_audio_quality
 from app.providers.provider_chain import get_active_provider_async
-from app.utils.redis_client import get_redis
 from app.utils.storage import storage
+
+
+def _read_file(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()
 
 
 async def clone_voice_async(
@@ -34,9 +37,9 @@ async def clone_voice_async(
         if existing.scalar_one_or_none():
             return {"status": "duplicate", "message": "声音名称已存在"}
 
-        # 2. Audio quality gate
+        # 2. Audio quality gate（CPU 密集，卸载到线程避免阻塞事件循环）
         abs_path = await storage.get_path(validated_audio_path)
-        quality = check_audio_quality(abs_path)
+        quality = await asyncio.to_thread(check_audio_quality, abs_path)
         if not quality.passed:
             return {"status": "failed", "error": quality.reject_reason}
 
@@ -45,13 +48,13 @@ async def clone_voice_async(
             user_id=uuid.UUID(user_id),
             audio_sha256=audio_sha256,
             purpose=purpose,
-            agreed_at=db.func.now(),
+            agreed_at=func.now(),
         )
         db.add(consent)
         await db.flush()
 
         # 4. Clone (audio read offloaded to thread to avoid blocking event loop)
-        audio_data = await asyncio.to_thread(lambda: open(abs_path, "rb").read())
+        audio_data = await asyncio.to_thread(_read_file, abs_path)
         provider = await get_active_provider_async()
         voice_meta = await provider.clone_voice(audio_data, name)
 
@@ -69,6 +72,7 @@ async def clone_voice_async(
         )
         db.add(voice)
         await db.flush()
+        await db.commit()
 
         return {
             "status": "completed",
