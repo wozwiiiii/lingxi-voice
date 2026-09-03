@@ -15,6 +15,10 @@ from app.config import settings
 
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+load_dotenv(dotenv_path="D:/AI_Program/fuchuang_project/lingxi-voice/deploy/.env")
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
