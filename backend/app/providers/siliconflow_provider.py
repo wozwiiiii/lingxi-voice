@@ -14,6 +14,7 @@ from app.providers.base import (
     TTSProvider,
     VoiceMetadata,
 )
+from app.providers.errors import ContentError, ProviderUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +64,14 @@ class SiliconFlowProvider(TTSProvider):
                 clone_max_duration=30.0,
             )
         )
+        # timeout 必须显式指定：SDK 默认 600s，上游 hang 住时 worker
+        # --concurrency=2 只需两个请求就全站停摆（P0 修复中最危险的单点）。
+        # max_retries=1 给瞬时抖动一次自救机会，又不会把故障等待时间翻倍。
         self._client = AsyncOpenAI(
             api_key=settings.SILICONFLOW_API_KEY,
             base_url=settings.SILICONFLOW_BASE_URL,
+            timeout=settings.PROVIDER_TIMEOUT_S,
+            max_retries=1,
         )
 
     @property
@@ -96,14 +102,19 @@ class SiliconFlowProvider(TTSProvider):
             )
         except APIStatusError as e:
             logger.error(f"SiliconFlow API error: {e.status_code} - {e.body}")
+            # 按语义分类：402/429/5xx 是供应商侧问题（可重试、计入熔断），
+            # 400 是请求内容问题（不可重试、不污染熔断计数）。
+            # 均继承 ValueError，tts_service 的 503 映射行为不变。
             if e.status_code == 402:
-                raise ValueError("语音服务账户余额不足，请充值后重试") from e
+                raise ProviderUnavailableError("语音服务账户余额不足，请充值后重试") from e
             elif e.status_code == 400:
-                raise ValueError(f"语音合成参数错误: {e.body}") from e
+                raise ContentError(f"语音合成参数错误: {e.body}") from e
             elif e.status_code == 429:
-                raise ValueError("语音服务请求过于频繁，请稍后重试") from e
+                raise ProviderUnavailableError("语音服务请求过于频繁，请稍后重试") from e
             else:
-                raise ValueError(f"语音服务暂时不可用 (错误码 {e.status_code})，请稍后重试") from e
+                raise ProviderUnavailableError(
+                    f"语音服务暂时不可用 (错误码 {e.status_code})，请稍后重试"
+                ) from e
 
         audio_data = response.content
         duration_ms = int((time.monotonic() - start) * 1000)
@@ -114,7 +125,9 @@ class SiliconFlowProvider(TTSProvider):
     ) -> AsyncIterator[bytes]:
         # 与 synthesize 一致：UUID → 供应商侧真实 voice_id
         actual_voice_id = await resolve_provider_voice_id(voice_id)
-        async with httpx.AsyncClient(timeout=300) as client:
+        # 原为硬编码 300s，与 PROVIDER_TIMEOUT_S 统一口径，避免两条链路
+        # 对"上游多久算挂"得出不同答案
+        async with httpx.AsyncClient(timeout=settings.PROVIDER_TIMEOUT_S) as client:
             async with client.stream(
                 "POST",
                 f"{settings.SILICONFLOW_BASE_URL}/audio/speech",
