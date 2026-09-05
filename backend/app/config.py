@@ -41,6 +41,29 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
 
+    # ---- 超时（P0 止血：防止任务永久卡死）----
+    # 云 TTS 客户端超时。原本 AsyncOpenAI 未传 timeout，用 SDK 默认 600s——
+    # 上游 hang 住时，worker --concurrency=2 只需两个请求就全站停摆。
+    PROVIDER_TIMEOUT_S: float = 60.0
+    # LLM 预处理超时。单页文本 <500 token，p99 约 5-10s。
+    LLM_TIMEOUT_S: float = 30.0
+    LLM_MAX_ATTEMPTS: int = 3
+    # 重试退避基数：sleep(base * 2**attempt)，原实现无退避
+    LLM_RETRY_BACKOFF_BASE_S: float = 0.5
+    # 单页合成硬超时 = LLM 90s 上限（3 次 × 30s）+ TTS 60s，留余量
+    COURSEWARE_SLIDE_TIMEOUT_S: float = 120.0
+    # 整个课件任务的软墙 deadline。刻意不用 Celery 的 time_limit：
+    # hard kill 会绕过 finally 导致状态不收敛，且 acks_late=True 时
+    # hard kill 不计入 max_retries，会造成无限重投反复烧云 API 费用。
+    COURSEWARE_TASK_TOTAL_TIMEOUT_S: float = 1800.0
+    COURSEWARE_SYNTHESIS_CONCURRENCY: int = 3
+
+    # ---- 月度配额（防滥用，非计费）----
+    # TTS 与课件分开计数：1 次 TTS ≈ 1 次云调用，1 页课件 ≈ LLM + TTS 两次。
+    # 用户级覆盖走 User.quota_override = {"tts": N, "courseware": N}
+    QUOTA_MONTHLY_TTS: int = 300
+    QUOTA_MONTHLY_COURSEWARE_PAGES: int = 300
+
     # CORS (comma-separated string in env, accessed as list via property)
     CORS_ORIGINS: str = "http://localhost:5173"
 

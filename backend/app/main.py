@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from app.api.auth import router as auth_router
 from app.api.capabilities import router as capabilities_router
@@ -41,12 +42,14 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     from app.database import AsyncSessionLocal
     from app.services.courseware_service import seed_courseware_presets
+    from app.services.prompt_service import seed_default_prompt
     from app.services.voice_service import seed_preset_voices
 
     try:
         async with AsyncSessionLocal() as db:
             await seed_preset_voices(db)
             await seed_courseware_presets(db)
+            await seed_default_prompt(db)
             await db.commit()
     except Exception as e:
         logger.warning(f"Preset seeding skipped (will retry on next start): {e}")
@@ -108,7 +111,8 @@ async def rate_limit_middleware(request: Request, call_next):
 
         # 登录接口独立更严限流（P2-8）：全局限流 30 次/分对撞库/爆破而言
         # 窗口过大，业界惯例登录类接口收紧到 5-10 次/分。
-        # 账号维度锁定（失败递增延迟）是有意的未实现项，见面试/02。
+        # 账号维度锁定（连续失败 5 次锁 15 分钟）已在 auth_service 实现，
+        # 此处限流是 IP 维度的第一道防线，两者互补。
         max_override = 10 if request.url.path == "/api/auth/login" else None
 
         await rate_limiter.check(key, max_override=max_override)
@@ -135,3 +139,21 @@ app.include_router(media_router)
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus 指标端点（可观测性 P1）。
+
+    挂顶层 /metrics 而非 /api/ 前缀下，天然豁免限流中间件（中间件只拦
+    /api/**）。生产环境建议由 nginx 反代并对内网/监控系统限制访问，
+    避免指标暴露到公网。
+    """
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    # 仅 import 模块触发指标注册（各 Collector 在模块加载时已注册到
+    # prometheus_client 的全局 REGISTRY），generate_latest() 会抓取全部。
+    import app.utils.metrics  # noqa: F401
+
+    data = generate_latest()
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
