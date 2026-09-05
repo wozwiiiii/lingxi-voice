@@ -1,15 +1,9 @@
 """TDD tests for JWT token operations, visitor tokens, and auth dependencies."""
 
-import time
-import uuid
-from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import jwt
 import pytest
-from fastapi import HTTPException
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.security.jwt import (
     create_access_token,

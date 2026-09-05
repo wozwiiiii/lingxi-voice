@@ -1,6 +1,5 @@
 """PPTX text extraction using python-pptx. Only supports .pptx format."""
 
-import io
 import logging
 import zipfile
 from dataclasses import dataclass

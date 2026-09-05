@@ -113,6 +113,19 @@ async function handleSynthesize() {
   }
 }
 
+// 失败页是否「可重试」：provider_unavailable / timeout 是瞬时故障，重试有意义；
+// content_error 是内容问题（文本不合法等），重试无意义，需用户先改内容。
+function isRetryable(s: CoursewareSlide): boolean {
+  return s.error_code === "provider_unavailable" || s.error_code === "timeout";
+}
+
+function failureHint(s: CoursewareSlide): string {
+  if (!isRetryable(s)) {
+    return "内容或参数问题，请检查本页文本后重新合成";
+  }
+  return s.error_code === "timeout" ? "合成超时，可重试" : "服务暂时不可用，可重试";
+}
+
 // 通过 SSE 实时跟踪后台合成进度
 function listenSynthesisProgress(pid: string, ticket: string) {
   closeSynthesisStream();
@@ -250,13 +263,25 @@ function handleDelete() {
           <a-textarea v-model:value="s.edited_text"
             :placeholder="s.original_text || '(无文本内容，可手动输入)'" :rows="3"
             @blur="saveSlide(s)" />
-          <a-select v-model:value="s.voice_id" placeholder="选择声音" style="width:200px;margin-top:4px"
+          <a-select v-model:value="s.voice_id" placeholder="选择声音" class="slide-voice-select"
             @change="saveSlide(s)" allow-clear>
             <a-select-option v-for="v in voices" :key="v.id" :value="v.id">{{ v.name }}</a-select-option>
           </a-select>
           <a-tag v-if="s.status==='completed'" color="green" style="margin-left:8px">已合成</a-tag>
-          <a-tag v-else-if="s.status==='failed'" color="red" style="margin-left:8px">合成失败</a-tag>
+          <a-tag v-else-if="s.status==='failed'" :color="isRetryable(s) ? 'orange' : 'red'" style="margin-left:8px">
+            合成失败
+          </a-tag>
           <a-tag v-else color="default" style="margin-left:8px">待合成</a-tag>
+          <a-tooltip v-if="s.status==='failed'" :title="failureHint(s)">
+            <a-button
+              type="link"
+              size="small"
+              :disabled="synthesizing"
+              @click="handleSynthesize"
+            >
+              {{ isRetryable(s) ? '重试本页' : '需修改后重试' }}
+            </a-button>
+          </a-tooltip>
         </a-card>
       </div>
     </template>
@@ -302,5 +327,15 @@ function handleDelete() {
   margin: 0 0 16px;
   font-size: 13px;
   color: var(--lx-text-secondary);
+}
+.slide-voice-select {
+  width: 200px;
+  margin-top: 4px;
+}
+@media (max-width: 767px) {
+  /* 窄屏（手机/竖屏平板）：音色选择器占满宽度，避免 200px 固定宽度溢出 */
+  .slide-voice-select {
+    width: 100%;
+  }
 }
 </style>

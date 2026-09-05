@@ -43,6 +43,22 @@ export interface VoiceResponse {
   description: string | null;
 }
 
+export interface CloneResponse {
+  status: string;
+  voice_id: string | null;
+  voice_meta: { id: string; name: string } | null;
+  message: string | null;
+  error: string | null;
+}
+
+export interface TTSHistoryItem {
+  id: string;
+  text: string;
+  audio_url: string | null;
+  created_at: string | null;
+  provider: string | null;
+}
+
 export interface UserInfo {
   id: string;
   email: string;

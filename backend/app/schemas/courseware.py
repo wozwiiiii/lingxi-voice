@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 
 
 class SlideUpdate(BaseModel):
@@ -47,6 +47,9 @@ class CoursewareSlideResponse(BaseModel):
     audio_path: str | None = None
     audio_duration_ms: int | None = None
     status: str
+    # 失败页的错误分类：provider_unavailable/timeout 可重试，content_error 不可。
+    # 不加的话 Pydantic 会静默丢弃模型上的新字段，前端永远读不到。
+    error_code: str | None = None
 
     model_config = {"from_attributes": True}
 

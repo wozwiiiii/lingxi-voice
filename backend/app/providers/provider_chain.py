@@ -4,12 +4,12 @@ TTS_PROVIDER_CHAIN env var defines the preference order, e.g.:
   "local:cosyvoice2,cloud:siliconflow"
 """
 
-import asyncio
 import logging
 
 from app.config import settings
 from app.providers.base import TTSProvider
 from app.providers.circuit_breaker import CircuitBreaker, CircuitState
+from app.utils.metrics import CIRCUIT_REJECTED_TOTAL
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +40,12 @@ def _get_chain() -> list[str]:
 
 
 async def get_active_provider_async() -> TTSProvider:
-    """Return the first non-open provider in the chain.
-    Raises RuntimeError if all providers are unavailable.
+    """Return the first available provider in the chain.
+
+    - CLOSED：正常放行。
+    - HALF_OPEN：只放行抢到试探权（SET NX）的那一个请求，其余视作仍不可用，
+      继续尝试链上的下一个 provider。若链上再无可用 provider，抛 RuntimeError。
+    - OPEN：直接跳过，尝试下一个 provider。
     """
     _init()
 
@@ -49,9 +53,22 @@ async def get_active_provider_async() -> TTSProvider:
         if provider_name not in _circuits:
             logger.warning(f"Unknown provider in chain: {provider_name}")
             continue
-        state = await _circuits[provider_name].get_state()
-        if state != CircuitState.OPEN:
+        circuit = _circuits[provider_name]
+        state = await circuit.get_state()
+        if state == CircuitState.CLOSED:
             return _providers[provider_name]
+        if state == CircuitState.HALF_OPEN:
+            # 半开探测：只放行一个试探请求，其余降级到下一个 provider。
+            # 抢到试探权的调用方负责在成败后 record_success/record_failure。
+            if await circuit.try_acquire_probe():
+                return _providers[provider_name]
+            logger.info(
+                f"Provider {provider_name} in HALF_OPEN, probe in progress, skipping"
+            )
+            CIRCUIT_REJECTED_TOTAL.labels(provider_name).inc()
+            continue
+        # OPEN：直接跳过并计数
+        CIRCUIT_REJECTED_TOTAL.labels(provider_name).inc()
 
     raise RuntimeError("All TTS providers are unavailable")
 

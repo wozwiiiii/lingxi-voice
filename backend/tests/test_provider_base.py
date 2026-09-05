@@ -1,6 +1,5 @@
 """TDD tests for TTSProvider base types — ProviderCapabilities, SynthesisParams."""
 
-import pytest
 
 from app.providers.base import (
     AudioResult,

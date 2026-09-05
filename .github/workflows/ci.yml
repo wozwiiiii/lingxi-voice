@@ -2,26 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 jobs:
   backend:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports: ["6379:6379"]
+    # 不起 postgres/redis 服务：tests/conftest.py 与 scripts/contract_check.py
+    # 都硬编码 sqlite+aiosqlite:///:memory: 并用 fakeredis，外部服务是空转。
+    # 若将来改为对真实 PG/Redis 跑测试，需在此补回 services 并同步 conftest。
 
     steps:
       - uses: actions/checkout@v4
@@ -32,8 +22,10 @@ jobs:
       - run: cd backend && ruff check .
       - run: cd backend && python -m pytest --cov=app --cov-report=term -x
         env:
-          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
-          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: test-ci-secret-key-not-for-production
+      # 前端依赖的 API 契约门禁：改任何后端响应字段后必须跑通
+      - run: cd backend && python scripts/contract_check.py
+        env:
           JWT_SECRET_KEY: test-ci-secret-key-not-for-production
 
   frontend:
@@ -43,4 +35,5 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - run: cd frontend && npm ci
-      - run: cd frontend && npx vue-tsc --noEmit
+      # build 内含 vue-tsc --noEmit，类型检查与打包一次完成
+      - run: cd frontend && npm run build

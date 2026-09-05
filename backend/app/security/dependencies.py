@@ -82,3 +82,4 @@ async def get_visitor_or_user(
     new_token = create_visitor_token()
     await redis.setex(f"guest:{new_token}", 86400, "1")
     return None, new_token
+

@@ -1,7 +1,6 @@
 """Complete upload validation chain for audio files."""
 
 import hashlib
-import uuid
 from dataclasses import dataclass
 
 from fastapi import HTTPException, UploadFile, status

@@ -1,7 +1,6 @@
 """Generate a minimal 2-slide .pptx for testing."""
 
 from pptx import Presentation
-from pptx.util import Inches
 
 prs = Presentation()
 

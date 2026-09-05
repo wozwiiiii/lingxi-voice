@@ -1,6 +1,7 @@
 # 灵犀语伴 — 完整运行指南
 
-> 适用于 Python 版和 Java 版。从零开始，一步一步，每步都有验证方法。
+> 适用于 Python 版（主）。Java 版为「扩展预留」的契约对齐样例，不作为可用
+> 服务运行——下方仅保留其单测验证说明，不提供部署指引。
 
 ---
 
@@ -11,10 +12,7 @@
   - [本地运行（Docker 全栈，推荐）](#python-本地运行docker)
   - [本地运行（无 Docker，仅 API）](#python-本地运行无docker)
   - [远程上线（腾讯云/阿里云轻量服务器）](#python-远程上线)
-- [Java 版](#java-版)
-  - [本地测试](#java-本地测试)
-  - [本地运行](#java-本地运行)
-  - [远程上线](#java-远程上线)
+- [Java 版（扩展预留）](#java-版扩展预留)
 - [前置准备清单](#前置准备清单)
 
 ---
@@ -38,8 +36,8 @@
 | Node.js 20+ | `node --version` | 去 https://nodejs.org 下载 LTS 版 |
 | Git | `git --version` | 去 https://git-scm.com 下载 |
 | Docker Desktop（可选） | `docker --version` | 去 https://docker.com 下载（本地全栈运行需要） |
-| JDK 21（仅 Java 版） | `java --version` | 去 https://adoptium.net 下载 Temurin 21 |
-| Maven 3.9+（仅 Java 版） | `mvn --version` | 去 https://maven.apache.org 下载 |
+| JDK 21（仅 Java 契约样例） | `java --version` | 去 https://adoptium.net 下载 Temurin 21 |
+| Maven 3.9+（仅 Java 契约样例） | `mvn --version` | 去 https://maven.apache.org 下载 |
 
 ---
 
@@ -61,13 +59,13 @@ cd tests\fixtures
 python generate_sample.py
 cd ..\..
 
-# 4. 运行全部 81 个测试
+# 4. 运行全部 149 个测试
 python -m pytest tests/ -v
 ```
 
 **你应该看到：**
 ```
-======================== 81 passed in 3.16s ========================
+======================== 149 passed, ~16s ========================
 ```
 
 **如果测试不过**，常见问题：
@@ -91,7 +89,7 @@ python -m pytest tests/test_auth.py::test_register_success -v
 
 ### Python 本地运行（Docker）
 
-> **推荐方式。** Docker 一键启动全部服务（API + Worker + PostgreSQL + Redis + Nginx），和线上环境一致。
+> **推荐方式。** Docker 一键启动全部服务（API + Worker + Beat + PostgreSQL + Redis + Nginx），和线上环境一致。
 
 #### 第一次启动
 
@@ -204,7 +202,7 @@ uvicorn app.main:app --reload --port 8000
 > - 课件批量合成（需要 Celery Worker）
 > - 声音克隆（需要 Celery Worker）
 >
-> **但 81 个测试完全不受影响**——测试用内存模拟一切。
+> **但 149 个测试完全不受影响**——测试用内存模拟一切。
 
 ---
 
@@ -337,182 +335,36 @@ certbot --nginx -d your-domain.com
 
 ---
 
-## Java 版
+## Java 版（扩展预留）
 
-### Java 本地测试
-
-> 需要 JDK 21 + Maven。测试用 H2 内存数据库，不需要 PostgreSQL。
+> ⚠️ **Java 版不是可用服务**，是「双语言契约对齐」的工程样例：核心 Provider
+> 为存根（`synthesize` 返回空音频）、MCP 工具未做真实注解、未做端到端联调。
+> 项目实际运行**只支持 Python 版**。Java 版仅用于验证 API 契约跨语言一致性。
 
 ```bash
-# 1. 进入项目
-cd D:\AI_Program\fuchuang_project\lingxi-voice-java
-
-# 2. 确认 Java 和 Maven 可用
-java --version
-# 应该显示：openjdk 21.x.x
-
-mvn --version
-# 应该显示：Apache Maven 3.9.x
-
-# 3. 运行全部测试
+# 唯一有意义的用法：跑单测验证契约（需要 JDK 21 + Maven）
+cd lingxi-voice-java
 mvn test
+# 应看到 Tests run: 80+, Failures: 0
 ```
 
-**你应该看到：**
-```
-Tests run: 80+, Failures: 0, Errors: 0, Skipped: 0
-BUILD SUCCESS
-```
-
-**如果测试不过**，常见问题：
-
-| 错误 | 解决方法 |
-|---|---|
-| `JAVA_HOME is not set` | 设置环境变量 `JAVA_HOME` 指向 JDK 21 安装目录 |
-| `mvn: command not found` | Maven 未安装或未加入 PATH |
-| `Connection refused` | 测试中的 Repository 测试需要 H2 内存数据库，应该自动创建 |
-
-#### 只跑某一个测试
-
-```bash
-# 只跑认证测试
-mvn test -Dtest=AuthServiceTest
-
-# 只跑一个测试方法
-mvn test -Dtest=AuthServiceTest#registersNewUser
-```
-
----
-
-### Java 本地运行
-
-> 需要 PostgreSQL 数据库。推荐用 Docker 启动数据库，然后 IDE 或命令行启动应用。
-
-#### 第一步：启动数据库（Docker）
-
-```bash
-# 启动 PostgreSQL + Redis
-docker run -d --name lingxi-postgres \
-  -e POSTGRES_USER=lingxi \
-  -e POSTGRES_PASSWORD=lingxi \
-  -e POSTGRES_DB=lingxi \
-  -p 5432:5432 \
-  postgres:16-alpine
-
-docker run -d --name lingxi-redis \
-  -p 6379:6379 \
-  redis:7-alpine
-
-# 验证数据库可用
-docker ps
-# 应该看到两个容器都在运行
-```
-
-#### 第二步：配置环境变量
-
-创建 `src/main/resources/application-local.yml`（或在启动时传入）：
-
-```bash
-# Windows PowerShell:
-$env:DATABASE_URL="jdbc:postgresql://localhost:5432/lingxi"
-$env:POSTGRES_USER="lingxi"
-$env:POSTGRES_PASSWORD="lingxi"
-$env:JWT_SECRET_KEY="local-dev-secret-key-at-least-32-chars-long"
-$env:DEEPSEEK_API_KEY="sk-你的密钥"
-$env:SILICONFLOW_API_KEY="sk-你的密钥"
-$env:TTS_PROVIDER_CHAIN="cloud:siliconflow"
-```
-
-#### 第三步：启动应用
-
-```bash
-cd D:\AI_Program\fuchuang_project\lingxi-voice-java
-
-# 编译并启动
-mvn spring-boot:run
-```
-
-**你应该看到：**
-```
-Started LingxiVoiceApplication in 5.234 seconds
-```
-
-#### 第四步：验证
-
-```bash
-# 另一个终端
-curl http://localhost:8080/api/health
-# → {"status":"ok"}
-
-curl http://localhost:8080/actuator/health
-# → {"status":"UP"}
-
-curl http://localhost:8080/api/capabilities
-# → [{"provider":"cloud:siliconflow","capabilities":{...}}]
-```
-
----
-
-### Java 远程上线
-
-> 与 Python 版基本相同——上传 jar 包而非源码。
-
-#### 第一步：服务器准备工作
-
-同 Python 版第三步——安装 Docker。
-
-#### 第二步：打包
-
-```bash
-cd D:\AI_Program\fuchuang_project\lingxi-voice-java
-
-# 打包成可执行的 jar
-mvn package -DskipTests
-
-# 产物在 target/lingxi-voice-0.1.0.jar
-```
-
-#### 第三步：上传到服务器
-
-```bash
-scp target/lingxi-voice-0.1.0.jar root@你的服务器IP:/opt/lingxi-voice-java/
-```
-
-#### 第四步：在服务器上启动
-
-```bash
-ssh root@你的服务器IP
-
-cd /opt/lingxi-voice-java
-
-# 启动（nohup 表示后台运行，关闭终端不会停）
-nohup java -jar \
-  -DDATABASE_URL=jdbc:postgresql://localhost:5432/lingxi \
-  -DJWT_SECRET_KEY=你的64位随机密钥 \
-  -DDEEPSEEK_API_KEY=sk-你的密钥 \
-  -DSILICONFLOW_API_KEY=sk-你的密钥 \
-  lingxi-voice-0.1.0.jar > app.log 2>&1 &
-
-# 查看日志
-tail -f app.log
-
-# 验证
-curl http://localhost:8080/api/health
-```
+如果未来要启用 Java 版，需补全 `SiliconFlowProvider`（当前返回空音频）、
+`TtsService`（当前不存在）、`TtsTool` 的 Spring AI MCP 注解。在这些补全之前，
+不要把它当作可部署的服务。
 
 ---
 
 ## 快速参考表
 
-| 操作 | Python 版 | Java 版 |
-|---|---|---|
-| 跑测试 | `cd backend && python -m pytest tests/ -v` | `cd lingxi-voice-java && mvn test` |
-| 本地启动 | `cd deploy && docker compose up -d` | `mvn spring-boot:run` |
-| 健康检查 | `curl localhost:8000/api/health` | `curl localhost:8080/api/health` |
-| API 文档 | http://localhost:8000/docs | 无（SpringDoc 未集成） |
-| 远程部署 | rsync + Docker | scp + java -jar |
-| 月成本 | ¥70-130 | ¥50-80（无 AI API 费用，LLM/TTS 单独计费） |
+| 操作 | Python 版（唯一可运行版） |
+|---|---|
+| 跑测试 | `cd backend && python -m pytest tests/ -v` |
+| 本地启动 | `cd deploy && docker compose up -d` |
+| 健康检查 | `curl localhost:8000/api/health` |
+| API 文档 | http://localhost:8000/docs |
+| 远程部署 | rsync + Docker Compose |
+| 月成本 | ¥70-130（含 AI API 费用） |
 
 ---
 
-*最后更新：2026-07-19。两个版本均在 Windows 11 + Python 3.12 + Docker Desktop + JDK 21 上验证通过。*
+*最后更新：2026-09-03。Python 版在 Windows 11 + Python 3.10 + Docker Desktop 上验证通过；Java 版为契约对齐样例（仅单测验证）。*

@@ -2,14 +2,9 @@
 
 import io
 import json
-import tempfile
 import zipfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
-from app.services.courseware_service import apply_bulk_settings
 
 
 class TestBuildZip:

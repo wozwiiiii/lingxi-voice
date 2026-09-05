@@ -93,6 +93,52 @@ class TestHalfOpenTransition:
         assert await cb.get_state() == CircuitState.OPEN
 
 
+class TestHalfOpenProbe:
+    """半开探测（P1）：HALF_OPEN 下只放行一个试探请求。"""
+
+    @pytest.mark.asyncio
+    async def test_first_probe_acquires_only_once(self, cb):
+        await cb._transition_to(CircuitState.HALF_OPEN)
+        # 第一个请求抢到试探权
+        assert await cb.try_acquire_probe() is True
+        # 占位符已存在，第二个请求抢不到
+        assert await cb.try_acquire_probe() is False
+
+    @pytest.mark.asyncio
+    async def test_probe_success_releases_probe_slot(self, cb):
+        await cb._transition_to(CircuitState.HALF_OPEN)
+        assert await cb.try_acquire_probe() is True
+        await cb.record_success()
+        assert await cb.get_state() == CircuitState.CLOSED
+        # 成功后占位符清除，熔断已关，后续请求直接走 CLOSED 全量放行
+
+    @pytest.mark.asyncio
+    async def test_probe_failure_reopens_and_clears_slot(self, cb):
+        await cb._transition_to(CircuitState.HALF_OPEN)
+        assert await cb.try_acquire_probe() is True
+        await cb.record_failure()
+        assert await cb.get_state() == CircuitState.OPEN
+        # 重新 OPEN 后占位符已清，等 recovery_timeout 后再次进入 HALF_OPEN
+        # 时可重新抢到试探权（这里验证占位符确实被清除）
+        await cb._transition_to(CircuitState.HALF_OPEN)
+        assert await cb.try_acquire_probe() is True
+
+    @pytest.mark.asyncio
+    async def test_probe_slot_expires_after_ttl(self, cb):
+        """试探请求崩溃（没 record）时，占位符 TTL 过期后恢复试探权。"""
+        short_cb = CircuitBreaker(
+            name="test_cb_ttl", failure_threshold=3, recovery_timeout=1, probe_ttl=1
+        )
+        await short_cb._transition_to(CircuitState.HALF_OPEN)
+        assert await short_cb.try_acquire_probe() is True
+        # 模拟 TTL 过期：直接删掉占位符，验证能再次抢到
+        from app.utils.redis_client import get_redis
+
+        redis = await get_redis()
+        await redis.delete(short_cb._probe_key())
+        assert await short_cb.try_acquire_probe() is True
+
+
 class TestCircuitKeyIsolation:
     @pytest.mark.asyncio
     async def test_different_names_isolated(self, cb):
