@@ -56,6 +56,25 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ---- Celery Beat：定时任务（孤儿清理 + 音频清理 + 卡死收敛）----
+  # 只跑一个实例（Beat 负责调度，不执行任务；执行由 worker 完成）。
+  # 与 worker 共用同一镜像与 media_data 卷，音频清理才能访问到磁盘文件。
+  beat:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    command: celery -A worker.celery_app beat --loglevel=info
+    volumes:
+      - media_data:/app/media
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ---- PostgreSQL（不暴露宿主机）----
   postgres:
     image: postgres:16-alpine
