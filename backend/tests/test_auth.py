@@ -66,6 +66,52 @@ async def test_register_short_password(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_login_locks_account_after_repeated_failures(client: AsyncClient):
+    """连续 5 次密码错误后账号锁定，即使密码正确也返回 423（P1）。"""
+    await client.post("/api/auth/register", json={
+        "email": "lock@test.com", "username": "lockuser", "password": "password123",
+    })
+    # 连续输错 5 次
+    for _ in range(5):
+        resp = await client.post("/api/auth/login", json={
+            "email": "lock@test.com", "password": "wrongpassword",
+        })
+        assert resp.status_code == 401
+
+    # 第 6 次即使密码正确也被锁定
+    resp = await client.post("/api/auth/login", json={
+        "email": "lock@test.com", "password": "password123",
+    })
+    assert resp.status_code == 423
+    assert "锁定" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_login_success_resets_failure_count(client: AsyncClient):
+    """失败几次后成功登录，失败计数清零，不会累积到锁定阈值。"""
+    await client.post("/api/auth/register", json={
+        "email": "reset@test.com", "username": "resetuser", "password": "password123",
+    })
+    for _ in range(4):
+        resp = await client.post("/api/auth/login", json={
+            "email": "reset@test.com", "password": "wrong",
+        })
+        assert resp.status_code == 401
+
+    # 成功登录
+    resp = await client.post("/api/auth/login", json={
+        "email": "reset@test.com", "password": "password123",
+    })
+    assert resp.status_code == 200
+
+    # 再次失败应从 1 重新计数，而不是继续累积到 5 触发锁定
+    resp = await client.post("/api/auth/login", json={
+        "email": "reset@test.com", "password": "wrong",
+    })
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_access_without_token(client: AsyncClient):
     resp = await client.get("/api/auth/me")
     assert resp.status_code == 401

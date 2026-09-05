@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/voices", tags=["voices"])
 @router.get("", response_model=list[VoiceResponse])
 async def list_voices(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Voice).where(Voice.is_public == True).order_by(Voice.created_at)
+        select(Voice).where(Voice.is_public.is_(True)).order_by(Voice.created_at)
     )
     return [VoiceResponse.from_voice(v) for v in result.scalars().all()]
 
