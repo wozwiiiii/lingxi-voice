@@ -27,6 +27,13 @@ class CoursewareProject(Base, UUIDMixin, TimestampMixin):
     celery_task_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     progress: Mapped[dict] = mapped_column(JSON, default=dict)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 项目级错误聚合：存在任一 provider_unavailable/timeout 页 →
+    # provider_unavailable（值得重试）；否则 content_error。
+    error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # 最近更新时间：onupdate 自动刷新，供「卡死任务收敛」判断项目是否僵死
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     slides = relationship("CoursewareSlide", back_populates="project",
                           cascade="all, delete-orphan")
@@ -58,6 +65,9 @@ class CoursewareSlide(Base, UUIDMixin, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("synthesis_tasks.id"), nullable=True
     )
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    # 失败时写入（见 utils/error_codes.py）：区分「重试有用」与「重试没用」
+    error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     project = relationship("CoursewareProject", back_populates="slides")
     voice = relationship("Voice")  # intentionally one-way: Voice is a shared resource

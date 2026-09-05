@@ -12,6 +12,7 @@ from app.models.task import SynthesisTask
 from app.models.voice import Voice
 from app.preprocess.llm_pipeline import llm_pipeline
 from app.providers.base import SynthesisParams
+from app.providers.errors import ProviderUnavailableError
 from app.providers.provider_chain import (
     get_active_provider_async,
     get_circuit_for_provider,
@@ -19,6 +20,7 @@ from app.providers.provider_chain import (
 from app.schemas.tts import TTSRequest, TTSResponse
 from app.api.media import sign_media_url
 from app.utils.audio import probe_duration_ms
+from app.utils.metrics import TTS_CHARACTERS_TOTAL, observe_tts
 from app.utils.redis_client import get_redis
 from app.utils.storage import storage
 
@@ -134,8 +136,19 @@ async def synthesize_tts(
             instruction=request.instruction,
         )
         try:
-            result = await provider.synthesize(processed_text, request.voice_id, params)
+            async with observe_tts(provider.name) as outcome:
+                result = await provider.synthesize(processed_text, request.voice_id, params)
+                outcome["success"] = True
+            TTS_CHARACTERS_TOTAL.labels(provider.name).inc(len(processed_text))
         except ValueError as e:
+            # F1 修复：provider 的 402/429/5xx 全部以 ValueError 子类抛出，
+            # 原先这里直接 503 返回、从不记熔断失败——最常见的失效（上游
+            # 限流/宕机）反而永远不会触发熔断，熔断器形同虚设。
+            # ContentError（用户内容问题）不是供应商的锅，不计入。
+            if isinstance(e, ProviderUnavailableError):
+                circuit = get_circuit_for_provider(provider.name)
+                if circuit:
+                    await circuit.record_failure()
             raise HTTPException(status_code=503, detail=str(e)) from e
         except Exception as e:
             # 供应商异常 → 记录失败，让熔断器在连续失败后打开（问题 2）

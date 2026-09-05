@@ -2,7 +2,6 @@
 
 import json
 import subprocess
-from pathlib import Path
 
 
 def get_audio_info(filepath: str) -> dict:

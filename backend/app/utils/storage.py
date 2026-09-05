@@ -17,6 +17,8 @@ class StorageBackend(ABC):
     async def get_path(self, key: str) -> str: ...
     @abstractmethod
     async def delete(self, key: str) -> None: ...
+    @abstractmethod
+    async def list(self, directory: str) -> list[str]: ...
 
 
 def _write_bytes(path: Path, data: bytes) -> None:
@@ -56,6 +58,25 @@ class LocalStorage(StorageBackend):
     async def delete(self, key: str) -> None:
         filepath = self.root / key
         await asyncio.to_thread(_delete_if_exists, filepath)
+
+    async def list(self, directory: str) -> list[str]:
+        """列出某目录下的文件，返回相对 root 的路径（如 'audio/abc.mp3'）。
+
+        目录不存在时返回空列表。返回的是「相对路径」与 save() 的返回口径
+        一致，方便与 SynthesisTask.output_audio_path 直接比对。
+        """
+        subdir = self.root / directory
+        if not subdir.exists():
+            return []
+
+        def _iter() -> list[str]:
+            return [
+                str(p.relative_to(self.root))
+                for p in subdir.iterdir()
+                if p.is_file()
+            ]
+
+        return await asyncio.to_thread(_iter)
 
 
 storage = LocalStorage()

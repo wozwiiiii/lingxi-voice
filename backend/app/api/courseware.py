@@ -3,13 +3,13 @@
 import io
 import uuid as uuid_mod
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.courseware import CoursewareProject
+from app.models.courseware import CoursewareProject, CoursewareSlide
 from app.models.user import User
 from app.schemas.courseware import (
     BulkSettingsUpdate,
@@ -20,6 +20,7 @@ from app.schemas.courseware import (
     SynthesizeResponse,
 )
 from app.security.dependencies import get_current_user, get_visitor_or_user
+from app.security.quota import QUOTA_KIND_COURSEWARE, check_quota, consume_quota, refund_quota
 from app.services.courseware_service import (
     apply_bulk_settings,
     build_zip,
@@ -188,6 +189,20 @@ async def synthesize_courseware(
             detail=f"课件状态为 {project.status}，无法开始合成",
         )
 
+    # 配额预检（防滥用）：按「待合成页数」计（pending+failed，重试只跑这些页），
+    # 而非 slides_count——重复提交不应该重复计费。异步任务的执行方在 worker，
+    # 响应里看不到结果，若等合成完成再计数，异步路径将完全绕过配额；
+    # 而课件才是烧钱主路径（1 个 100 页课件 ≈ LLM + TTS 共 200 次云调用）。
+    # 检查必须在抢锁/改状态之前：超限请求不留下任何副作用。
+    pending_count_result = await db.execute(
+        select(func.count(CoursewareSlide.id)).where(
+            CoursewareSlide.project_id == project.id,
+            CoursewareSlide.status.in_(["pending", "failed"]),
+        )
+    )
+    quota_cost = int(pending_count_result.scalar() or 0)
+    await check_quota(user, QUOTA_KIND_COURSEWARE, cost=max(quota_cost, 1))
+
     # 服务端幂等锁（P1-8）：前端防抖不是信任边界。状态检查与提交之间存在
     # 并发窗口，双击/重放的两个请求都会读到 ready——用 Redis SET NX 抢锁，
     # 抢不到即 409。锁由 worker 在 _finalize_project 释放，TTL 3600 兜底
@@ -203,6 +218,8 @@ async def synthesize_courseware(
     previous_status = project.status
     project.status = "synthesizing"
     await db.commit()  # Commit so the Celery task's own session sees the new status
+
+    await consume_quota(user.id, QUOTA_KIND_COURSEWARE, cost=max(quota_cost, 1))
 
     # 签发一次性 SSE 进度 ticket：存入安全 Redis 库，绑定 user+project，
     # TTL 600s。SSE 端点凭票访问，不再在 URL 中暴露 JWT（问题 12）。
@@ -227,9 +244,10 @@ async def synthesize_courseware(
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Synthesis task submission failed for {project_id}: {e}")
-        # 清理已签发但不会使用的 ticket 与幂等锁
+        # 清理已签发但不会使用的 ticket、幂等锁与配额预扣（云 API 未被调用）
         await sec_redis.delete(f"sse:ticket:{progress_ticket}")
         await redis.delete(lock_key)
+        await refund_quota(user.id, QUOTA_KIND_COURSEWARE, cost=max(quota_cost, 1))
         result = await db.execute(
             select(CoursewareProject).where(CoursewareProject.id == uuid_mod.UUID(project_id))
         )
@@ -282,19 +300,37 @@ async def get_progress(
             raise HTTPException(status_code=403, detail="无权访问该项目")
 
     from app.utils.redis_client import get_redis
-    import asyncio
     import json
+
+    channel = f"courseware:progress:{project_id}"
 
     async def event_stream():
         redis = await get_redis()
-        for _ in range(600):
-            progress = await redis.get(f"courseware:progress:{project_id}")
-            if progress:
-                data = json.loads(progress)
+        # 先读一次当前进度（可能任务已推进、消息已发出），避免订阅者错过
+        # 订阅建立之前已 PUBLISH 的中间进度。
+        current = await redis.get(channel)
+        if current:
+            data = json.loads(current)
+            yield f"data: {json.dumps(data)}\n\n"
+            if data.get("status") in ("completed", "failed"):
+                return
+
+        # 订阅进度 channel：worker 每完成一页 PUBLISH 一次，这里转发为 SSE。
+        # 相比旧实现的 1s 轮询，延迟降到接近实时，且 Redis QPS 从「每订阅者
+        # 每秒 1 次」降到「每页 1 次」。
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(channel)
+        try:
+            async for message in pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+                data = json.loads(message["data"])
                 yield f"data: {json.dumps(data)}\n\n"
                 if data.get("status") in ("completed", "failed"):
                     break
-            await asyncio.sleep(1)
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
