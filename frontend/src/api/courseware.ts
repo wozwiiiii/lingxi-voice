@@ -24,6 +24,7 @@ export interface CoursewareSlide {
   audio_path: string | null;
   audio_duration_ms: number | null;
   status: string;
+  error_code: string | null;
 }
 
 export interface CoursewareListResponse {
